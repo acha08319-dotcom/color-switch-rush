@@ -35,7 +35,13 @@ const MILESTONES: Milestone[] = [
   { combo: 100, label: "Godlike",     emoji: "👑" },
 ];
 
-type Mode = "classic" | "daily";
+type Mode = "classic" | "daily" | "practice";
+
+const MODE_LABEL: Record<Mode, string> = {
+  classic: "Endless",
+  daily: "Daily",
+  practice: "Practice",
+};
 
 type Gate = {
   y: number;
