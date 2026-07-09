@@ -892,22 +892,27 @@ function Game() {
 
         {/* Pause overlay */}
         {paused && running && !gameOver && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-40 animate-fade-in">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-40 animate-fade-in px-6">
             <div className="text-xs uppercase tracking-widest text-white/50 mb-2">Paused</div>
             <div className="text-4xl font-black mb-6">❚❚</div>
-            <button
-              onClick={togglePause}
-              className="px-8 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform mb-3"
-            >
-              ▶ Resume
-            </button>
-            <button
-              onClick={() => { setPaused(false); setRunning(false); setGameOver(false); stateRef.current.running = false; stateRef.current.over = false; }}
-              className="text-white/60 hover:text-white text-xs uppercase tracking-widest"
-            >
-              Quit run
-            </button>
-            <div className="text-white/30 text-[10px] mt-4">Press P or Esc to toggle</div>
+            <div className="flex flex-col gap-2 w-full max-w-[220px]">
+              <button
+                onClick={togglePause}
+                className="px-8 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform"
+              >
+                ▶ Resume
+              </button>
+              <button
+                onClick={quitToMenu}
+                className="px-8 py-3 rounded-full border border-white/30 text-white/90 font-black text-sm uppercase tracking-widest hover:bg-white/10 transition"
+              >
+                ✕ Quit run
+              </button>
+            </div>
+            <div className="text-white/40 text-[10px] mt-5 space-y-0.5 text-center">
+              <div><b className="text-white/60">P / Esc</b> — resume · <b className="text-white/60">Q</b> — quit</div>
+              <div>Quitting discards this run</div>
+            </div>
           </div>
         )}
 
