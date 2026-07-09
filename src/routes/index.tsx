@@ -772,7 +772,11 @@ function Game() {
   const shareScore = async () => {
     const dataUrl = generateShareImage();
     const badgeText = topBadge ? ` · ${topBadge.emoji} ${topBadge.label}` : "";
-    const modeText = mode === "daily" ? ` (Daily ${todayKey()})` : "";
+    const modeText = mode === "daily"
+      ? ` (Daily ${todayKey()})`
+      : mode === "practice"
+        ? " (Practice)"
+        : " (Endless)";
     try {
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], "color-switch-rush.png", { type: "image/png" });
