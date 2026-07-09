@@ -354,6 +354,11 @@ function Game() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.code === "KeyQ" && pausedRef.current) {
+        e.preventDefault();
+        quitToMenu();
+        return;
+      }
       if (e.code === "Space") {
         e.preventDefault();
         cycleColor();
@@ -364,7 +369,7 @@ function Game() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [cycleColor, togglePause]);
+  }, [cycleColor, togglePause, quitToMenu]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
