@@ -842,7 +842,7 @@ function Game() {
           </button>
         )}
 
-        {running && !gameOver && (
+        {running && !gameOver && mode !== "practice" && (
           <div className="pointer-events-none absolute top-20 left-4 right-4 z-10">
             <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-white/60 mb-1">
               <span>Level {level}</span>
@@ -863,10 +863,18 @@ function Game() {
           </div>
         )}
 
+        {running && !gameOver && mode === "practice" && (
+          <div className="pointer-events-none absolute top-20 left-0 right-0 text-center text-[10px] uppercase tracking-widest text-cyan-300/80">
+            Practice · fixed slow speed
+          </div>
+        )}
+
         <div className="pointer-events-none absolute bottom-4 left-0 right-0 text-center text-xs text-white/40 tracking-wider">
           {mode === "daily"
             ? <>Today's best {dailyBest} · All-time x{bestCombo}</>
-            : <>Best {best} · Best combo x{bestCombo}</>}
+            : mode === "practice"
+              ? <>Warm-up run · scores not saved</>
+              : <>Best {best} · Best combo x{bestCombo}</>}
         </div>
 
         {/* Live milestone badge popup */}
