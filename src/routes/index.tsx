@@ -778,7 +778,7 @@ function Game() {
           <div className="pointer-events-none absolute inset-x-0 top-32 z-30 flex justify-center">
             <div
               key={badgePopup.combo}
-              className="px-5 py-2.5 rounded-full bg-gradient-to-br from-yellow-300 to-pink-500 text-black font-black text-sm shadow-[0_0_40px_rgba(250,204,21,0.6)] animate-scale-in flex items-center gap-2"
+              className="px-5 py-2.5 rounded-full bg-gradient-to-br from-yellow-300 to-pink-500 text-black font-black text-sm shadow-[0_0_40px_rgba(250,204,21,0.6)] animate-fade-in flex items-center gap-2"
             >
               <span className="text-lg">{badgePopup.emoji}</span>
               <span>x{badgePopup.combo} {badgePopup.label}</span>
