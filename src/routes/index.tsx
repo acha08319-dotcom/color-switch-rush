@@ -190,6 +190,10 @@ function Game() {
   const [mode, setMode] = useState<Mode>("classic");
   const [badgePopup, setBadgePopup] = useState<Milestone | null>(null);
   const badgeTimerRef = useRef<number | null>(null);
+  const [passes, setPasses] = useState(0);
+  const [misses, setMisses] = useState(0);
+  const [longestChain, setLongestChain] = useState(0);
+  const [streak, setStreak] = useState(0);
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -218,6 +222,10 @@ function Game() {
     rand: Math.random as () => number,
     speedSeed: 0,
     mode: "classic" as Mode,
+    passes: 0,
+    misses: 0,
+    chain: 0,
+    longestChain: 0,
   });
 
   const sfx = useCallback((fn: () => void) => {
