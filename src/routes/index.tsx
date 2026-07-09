@@ -499,12 +499,24 @@ function Game() {
               const gained = 1 + Math.floor(s.combo / 3);
               s.score += gained;
               s.combo += 1;
+              s.passes += 1;
+              const wasNearMiss = s.nearMissGlow > 0.5;
+              if (wasNearMiss) {
+                s.chain = 0;
+              } else {
+                s.chain += 1;
+                if (s.chain > s.longestChain) {
+                  s.longestChain = s.chain;
+                  setLongestChain(s.longestChain);
+                }
+              }
               if (s.combo > s.peakCombo) {
                 s.peakCombo = s.combo;
                 setPeakCombo(s.peakCombo);
               }
               setScore(s.score);
               setCombo(s.combo);
+              setPasses(s.passes);
               playPass(s.combo);
               const hit = MILESTONES.find((m) => m.combo === s.combo);
               if (hit) {
@@ -525,6 +537,9 @@ function Game() {
               s.running = false;
               s.missFlash = 1;
               s.shake = settingsRef.current.reducedMotion ? 0 : 1;
+              s.misses += 1;
+              s.chain = 0;
+              setMisses(s.misses);
               playCrash();
               let nb = false;
               try {
@@ -535,7 +550,7 @@ function Game() {
                     setBest(s.score);
                     nb = true;
                   }
-                } else {
+                } else if (s.mode === "daily") {
                   const key = `csr_daily_${todayKey()}`;
                   const prev = Number(localStorage.getItem(key) || "0");
                   if (s.score > prev) {
@@ -543,11 +558,14 @@ function Game() {
                     setDailyBest(s.score);
                     nb = true;
                   }
+                  setStreak(recordDailyPlay());
                 }
-                const prevBC = Number(localStorage.getItem("csr_bestCombo") || "0");
-                if (s.peakCombo > prevBC) {
-                  localStorage.setItem("csr_bestCombo", String(s.peakCombo));
-                  setBestCombo(s.peakCombo);
+                if (s.mode !== "practice") {
+                  const prevBC = Number(localStorage.getItem("csr_bestCombo") || "0");
+                  if (s.peakCombo > prevBC) {
+                    localStorage.setItem("csr_bestCombo", String(s.peakCombo));
+                    setBestCombo(s.peakCombo);
+                  }
                 }
               } catch {}
               setNewBest(nb);
