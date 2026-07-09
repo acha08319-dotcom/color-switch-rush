@@ -918,11 +918,19 @@ function Game() {
 
         {/* Start screen */}
         {!running && !gameOver && !showSettings && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm z-20 animate-fade-in px-6">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
             <h1 className="text-4xl font-black tracking-tight mb-1 text-center">Color Switch Rush</h1>
-            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-5">Match · Thread · Combo</p>
+            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-4">Match · Thread · Combo</p>
 
-            <div className="flex gap-3 mb-5">
+            {streak > 0 && (
+              <div className="mb-4 px-3 py-1.5 rounded-full bg-orange-500/15 border border-orange-400/40 flex items-center gap-1.5 text-xs font-bold text-orange-200">
+                <span>🔥</span>
+                <span>{streak}-day streak</span>
+                <span className="text-orange-200/60 font-medium">· keep it alive</span>
+              </div>
+            )}
+
+            <div className="flex gap-3 mb-4">
               {COLORS.map((c, i) => (
                 <div
                   key={c.name}
@@ -934,7 +942,7 @@ function Game() {
               ))}
             </div>
 
-            <div className="mb-5 w-full max-w-[260px] space-y-1.5 text-sm">
+            <div className="mb-4 w-full max-w-[260px] space-y-1.5 text-sm">
               <div className="flex items-center gap-3 text-white/80">
                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-xs font-bold">👆</span>
                 <span><b>Tap / Click / Space</b> — cycle color</span>
@@ -950,7 +958,7 @@ function Game() {
                 onClick={() => reset("classic")}
                 className="px-8 py-3.5 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform shadow-[0_0_30px_rgba(255,255,255,0.3)]"
               >
-                ▶ Play Classic
+                ▶ Play Endless
               </button>
               <button
                 onClick={() => reset("daily")}
@@ -958,10 +966,16 @@ function Game() {
               >
                 ★ Daily Challenge
               </button>
+              <button
+                onClick={() => reset("practice")}
+                className="px-8 py-2.5 rounded-full border border-cyan-300/50 text-cyan-100 font-bold text-xs uppercase tracking-widest hover:bg-cyan-300/10 transition"
+              >
+                ◐ Practice (slow warm-up)
+              </button>
             </div>
 
             <div className="text-[10px] text-white/40 uppercase tracking-widest text-center mb-3">
-              <div>Classic best: {best} · x{bestCombo}</div>
+              <div>Endless best: {best} · x{bestCombo}</div>
               <div>Today's best: {dailyBest} <span className="opacity-60">({todayKey()})</span></div>
             </div>
 
