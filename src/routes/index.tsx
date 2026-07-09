@@ -26,13 +26,16 @@ const SPEED_STEP_INTERVAL = 6;
 const BASE_SPEED = 180;
 const SPEED_PER_LEVEL = 55;
 
-const MILESTONES: { combo: number; label: string; emoji: string }[] = [
-  { combo: 5,   label: "Warmed Up",     emoji: "🔥" },
-  { combo: 10,  label: "On Fire",       emoji: "🔥" },
-  { combo: 25,  label: "Unstoppable",   emoji: "⚡" },
-  { combo: 50,  label: "Legendary",     emoji: "💎" },
-  { combo: 100, label: "Godlike",       emoji: "👑" },
+type Milestone = { combo: number; label: string; emoji: string };
+const MILESTONES: Milestone[] = [
+  { combo: 5,   label: "Warmed Up",   emoji: "🔥" },
+  { combo: 10,  label: "On Fire",     emoji: "🔥" },
+  { combo: 25,  label: "Unstoppable", emoji: "⚡" },
+  { combo: 50,  label: "Legendary",   emoji: "💎" },
+  { combo: 100, label: "Godlike",     emoji: "👑" },
 ];
+
+type Mode = "classic" | "daily";
 
 type Gate = {
   y: number;
@@ -42,11 +45,40 @@ type Gate = {
   passed: boolean;
 };
 
-function makeGate(y: number, level: number): Gate {
-  const segs = [0, 1, 2, 3].sort(() => Math.random() - 0.5);
-  const spinBase = 0.55 + Math.random() * 0.7 + level * 0.18;
-  const spin = spinBase * (Math.random() < 0.5 ? -1 : 1);
-  return { y, rotation: Math.random() * Math.PI * 2, spin, segments: segs, passed: false };
+// Seeded RNG
+function mulberry32(seed: number) {
+  let a = seed >>> 0;
+  return function () {
+    a |= 0;
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function todayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function makeGate(y: number, level: number, rand: () => number): Gate {
+  const segs = [0, 1, 2, 3];
+  // Fisher-Yates with seeded rand
+  for (let i = segs.length - 1; i > 0; i--) {
+    const j = Math.floor(rand() * (i + 1));
+    [segs[i], segs[j]] = [segs[j], segs[i]];
+  }
+  const spinBase = 0.55 + rand() * 0.7 + level * 0.18;
+  const spin = spinBase * (rand() < 0.5 ? -1 : 1);
+  return { y, rotation: rand() * Math.PI * 2, spin, segments: segs, passed: false };
 }
 
 // --- Audio ---
@@ -80,9 +112,10 @@ type Settings = {
   sound: boolean;
   shake: boolean;
   colorblind: boolean;
+  reducedMotion: boolean;
 };
 
-const DEFAULT_SETTINGS: Settings = { sound: true, shake: true, colorblind: false };
+const DEFAULT_SETTINGS: Settings = { sound: true, shake: true, colorblind: false, reducedMotion: false };
 
 function loadSettings(): Settings {
   try {
@@ -94,6 +127,12 @@ function loadSettings(): Settings {
   }
 }
 
+function highestBadge(peak: number): Milestone | null {
+  let best: Milestone | null = null;
+  for (const m of MILESTONES) if (peak >= m.combo) best = m;
+  return best;
+}
+
 function Game() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -101,16 +140,26 @@ function Game() {
   const [combo, setCombo] = useState(0);
   const [best, setBest] = useState(0);
   const [bestCombo, setBestCombo] = useState(0);
+  const [dailyBest, setDailyBest] = useState(0);
   const [gameOver, setGameOver] = useState(false);
   const [running, setRunning] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [level, setLevel] = useState(1);
   const [nextSpeedIn, setNextSpeedIn] = useState(SPEED_STEP_INTERVAL);
   const [newBest, setNewBest] = useState(false);
   const [settings, setSettings] = useState<Settings>(DEFAULT_SETTINGS);
   const [showSettings, setShowSettings] = useState(false);
   const [peakCombo, setPeakCombo] = useState(0);
+  const [mode, setMode] = useState<Mode>("classic");
+  const [badgePopup, setBadgePopup] = useState<Milestone | null>(null);
+  const badgeTimerRef = useRef<number | null>(null);
+
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const pausedRef = useRef(paused);
+  pausedRef.current = paused;
 
   const stateRef = useRef({
     ballColor: 0,
@@ -129,6 +178,9 @@ function Game() {
     shake: 0,
     level: 1,
     speedFlashTimer: 0,
+    rand: Math.random as () => number,
+    speedSeed: 0,
+    mode: "classic" as Mode,
   });
 
   const sfx = useCallback((fn: () => void) => {
@@ -154,13 +206,24 @@ function Game() {
     setTimeout(() => beep(1200, 0.18, "triangle", 0.14), 180);
   }), [sfx]);
 
-  useEffect(() => {
+  const showBadge = useCallback((m: Milestone) => {
+    setBadgePopup(m);
+    if (badgeTimerRef.current) window.clearTimeout(badgeTimerRef.current);
+    badgeTimerRef.current = window.setTimeout(() => setBadgePopup(null), 1800);
+  }, []);
+
+  const loadBests = useCallback(() => {
     try {
       setBest(Number(localStorage.getItem("csr_best") || "0"));
       setBestCombo(Number(localStorage.getItem("csr_bestCombo") || "0"));
+      setDailyBest(Number(localStorage.getItem(`csr_daily_${todayKey()}`) || "0"));
     } catch {}
-    setSettings(loadSettings());
   }, []);
+
+  useEffect(() => {
+    loadBests();
+    setSettings(loadSettings());
+  }, [loadBests]);
 
   const updateSetting = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
@@ -170,9 +233,16 @@ function Game() {
     });
   }, []);
 
-  const reset = useCallback(() => {
+  const reset = useCallback((selectedMode: Mode = modeRef.current) => {
     const s = stateRef.current;
-    s.ballColor = Math.floor(Math.random() * 4);
+    const isDaily = selectedMode === "daily";
+    const seed = isDaily ? hashStr("csr-" + todayKey()) : (Math.random() * 2 ** 32) >>> 0;
+    const rand = mulberry32(seed);
+    // In daily mode, derive a seeded "speed jitter" pattern; classic uses none.
+    s.rand = rand;
+    s.speedSeed = seed;
+    s.mode = selectedMode;
+    s.ballColor = Math.floor(rand() * 4);
     s.ballY = 0;
     s.fallSpeed = BASE_SPEED;
     s.gates = [];
@@ -188,6 +258,7 @@ function Game() {
     s.shake = 0;
     s.level = 1;
     s.speedFlashTimer = 0;
+    setMode(selectedMode);
     setScore(0);
     setCombo(0);
     setPeakCombo(0);
@@ -195,9 +266,17 @@ function Game() {
     setNextSpeedIn(SPEED_STEP_INTERVAL);
     setGameOver(false);
     setRunning(true);
+    setPaused(false);
     setNewBest(false);
     setShowSettings(false);
+    setBadgePopup(null);
     getAudio()?.resume();
+  }, []);
+
+  const togglePause = useCallback(() => {
+    const s = stateRef.current;
+    if (!s.running || s.over) return;
+    setPaused((p) => !p);
   }, []);
 
   const cycleColor = useCallback(() => {
@@ -207,6 +286,7 @@ function Game() {
       reset();
       return;
     }
+    if (pausedRef.current) return;
     s.ballColor = (s.ballColor + 1) % 4;
     sfx(() => beep(520, 0.03, "sine", 0.05));
   }, [reset, sfx]);
@@ -216,11 +296,14 @@ function Game() {
       if (e.code === "Space") {
         e.preventDefault();
         cycleColor();
+      } else if (e.code === "KeyP" || e.code === "Escape") {
+        e.preventDefault();
+        togglePause();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [cycleColor]);
+  }, [cycleColor, togglePause]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -241,11 +324,14 @@ function Game() {
     ro.observe(canvas);
 
     const loop = (now: number) => {
-      const dt = Math.min(0.033, (now - last) / 1000);
+      const rawDt = Math.min(0.033, (now - last) / 1000);
       last = now;
       const s = stateRef.current;
       const cb = settingsRef.current.colorblind;
-      const shakeEnabled = settingsRef.current.shake;
+      const reduced = settingsRef.current.reducedMotion;
+      const shakeEnabled = settingsRef.current.shake && !reduced;
+      const isPaused = pausedRef.current;
+      const dt = isPaused ? 0 : rawDt;
       const rect = canvas.getBoundingClientRect();
       const W = rect.width;
       const H = rect.height;
@@ -269,18 +355,18 @@ function Game() {
       ctx.strokeStyle = "rgba(255,255,255,0.06)";
       ctx.strokeRect(tx, 0, tunnelW, H);
 
-      if (s.speedFlashTimer > 0) {
+      if (s.speedFlashTimer > 0 && !reduced) {
         const a = Math.min(1, s.speedFlashTimer) * 0.15;
         ctx.fillStyle = `rgba(250,204,21,${a})`;
         ctx.fillRect(tx, 0, tunnelW, H);
-        s.speedFlashTimer -= dt;
       }
+      if (s.speedFlashTimer > 0) s.speedFlashTimer -= dt;
 
       const ballX = W / 2;
       const ballScreenY = H * 0.32;
       const ballRadius = 14;
 
-      if (s.running && !s.over) {
+      if (s.running && !s.over && !isPaused) {
         s.time += dt;
 
         const newLevel = 1 + Math.floor(s.time / SPEED_STEP_INTERVAL);
@@ -288,17 +374,26 @@ function Game() {
           s.level = newLevel;
           setLevel(newLevel);
           s.speedFlashTimer = 0.7;
-          s.shake = Math.max(s.shake, 0.3);
+          if (!settingsRef.current.reducedMotion) s.shake = Math.max(s.shake, 0.3);
           playSpeedUp();
         }
-        s.fallSpeed = BASE_SPEED + (s.level - 1) * SPEED_PER_LEVEL;
+        // Base ramp + seeded jitter in daily mode (so speed pattern is deterministic per day).
+        let speed = BASE_SPEED + (s.level - 1) * SPEED_PER_LEVEL;
+        if (s.mode === "daily") {
+          // Deterministic sinusoidal jitter based on time and seed.
+          const seedPhase = (s.speedSeed % 1000) / 1000 * Math.PI * 2;
+          const jitter = Math.sin(s.time * 0.9 + seedPhase) * 25
+            + Math.sin(s.time * 0.31 + seedPhase * 1.7) * 18;
+          speed += jitter;
+        }
+        s.fallSpeed = speed;
         const remaining = SPEED_STEP_INTERVAL - (s.time % SPEED_STEP_INTERVAL);
         setNextSpeedIn(remaining);
 
         s.ballY += s.fallSpeed * dt;
 
         while (s.nextGateY < s.ballY + H) {
-          s.gates.push(makeGate(s.nextGateY, s.level));
+          s.gates.push(makeGate(s.nextGateY, s.level, s.rand));
           s.nextGateY += Math.max(160, 220 - s.level * 5);
         }
         for (const g of s.gates) g.rotation += g.spin * dt;
@@ -340,29 +435,43 @@ function Game() {
               setScore(s.score);
               setCombo(s.combo);
               playPass(s.combo);
-              if (MILESTONES.some((m) => m.combo === s.combo)) {
+              const hit = MILESTONES.find((m) => m.combo === s.combo);
+              if (hit) {
                 playMilestone();
-                s.shake = Math.max(s.shake, 0.4);
-                s.speedFlashTimer = Math.max(s.speedFlashTimer, 0.4);
+                if (!settingsRef.current.reducedMotion) {
+                  s.shake = Math.max(s.shake, 0.4);
+                  s.speedFlashTimer = Math.max(s.speedFlashTimer, 0.4);
+                }
+                showBadge(hit);
               }
               if (s.nearMissGlow > 0.6) {
                 playNearMiss();
-                s.shake = Math.max(s.shake, 0.25);
+                if (!settingsRef.current.reducedMotion) s.shake = Math.max(s.shake, 0.25);
               }
               s.nearMissGlow = 0;
             } else {
               s.over = true;
               s.running = false;
               s.missFlash = 1;
-              s.shake = 1;
+              s.shake = settingsRef.current.reducedMotion ? 0 : 1;
               playCrash();
               let nb = false;
               try {
-                const prevBest = Number(localStorage.getItem("csr_best") || "0");
-                if (s.score > prevBest) {
-                  localStorage.setItem("csr_best", String(s.score));
-                  setBest(s.score);
-                  nb = true;
+                if (s.mode === "classic") {
+                  const prevBest = Number(localStorage.getItem("csr_best") || "0");
+                  if (s.score > prevBest) {
+                    localStorage.setItem("csr_best", String(s.score));
+                    setBest(s.score);
+                    nb = true;
+                  }
+                } else {
+                  const key = `csr_daily_${todayKey()}`;
+                  const prev = Number(localStorage.getItem(key) || "0");
+                  if (s.score > prev) {
+                    localStorage.setItem(key, String(s.score));
+                    setDailyBest(s.score);
+                    nb = true;
+                  }
                 }
                 const prevBC = Number(localStorage.getItem("csr_bestCombo") || "0");
                 if (s.peakCombo > prevBC) {
@@ -378,8 +487,8 @@ function Game() {
         }
       }
 
-      s.shake = Math.max(0, s.shake - dt * 2);
-      s.nearMissGlow = Math.max(0, s.nearMissGlow - dt * 0.5);
+      s.shake = Math.max(0, s.shake - rawDt * 2);
+      s.nearMissGlow = Math.max(0, s.nearMissGlow - rawDt * 0.5);
 
       const gateRadius = Math.min(tunnelW * 0.42, 170);
       const gateThickness = 22;
@@ -402,12 +511,10 @@ function Game() {
           ctx.shadowColor = stroke;
           ctx.stroke();
           if (cb) {
-            // Draw symbol on segment midpoint
             const mid = (start + end) / 2;
             const sx = Math.cos(mid) * gateRadius;
             const sy = Math.sin(mid) * gateRadius;
             ctx.save();
-            ctx.rotate(0);
             ctx.shadowBlur = 0;
             ctx.fillStyle = "#0a0514";
             ctx.strokeStyle = "#0a0514";
@@ -426,7 +533,7 @@ function Game() {
         ctx.shadowBlur = 0;
       }
 
-      if (s.nearMissGlow > 0) {
+      if (s.nearMissGlow > 0 && !reduced) {
         const rr = ballRadius + 6 + s.nearMissGlow * 18;
         ctx.beginPath();
         ctx.arc(ballX, ballScreenY, rr, 0, Math.PI * 2);
@@ -444,7 +551,7 @@ function Game() {
       ctx.beginPath();
       ctx.arc(ballX, ballScreenY, ballRadius, 0, Math.PI * 2);
       ctx.fillStyle = ballCss;
-      ctx.shadowBlur = 20;
+      ctx.shadowBlur = reduced ? 6 : 20;
       ctx.shadowColor = ballCss;
       ctx.fill();
       if (cb) {
@@ -460,9 +567,10 @@ function Game() {
       ctx.restore();
 
       if (s.missFlash > 0) {
-        ctx.fillStyle = `rgba(255,60,60,${s.missFlash * 0.5})`;
+        const intensity = reduced ? 0.2 : 0.5;
+        ctx.fillStyle = `rgba(255,60,60,${s.missFlash * intensity})`;
         ctx.fillRect(0, 0, W, H);
-        s.missFlash -= dt * 1.5;
+        s.missFlash -= rawDt * 1.5;
       }
 
       raf = requestAnimationFrame(loop);
@@ -472,8 +580,11 @@ function Game() {
     return () => {
       cancelAnimationFrame(raf);
       ro.disconnect();
+      if (badgeTimerRef.current) window.clearTimeout(badgeTimerRef.current);
     };
-  }, [playPass, playCrash, playNearMiss, playSpeedUp, playMilestone]);
+  }, [playPass, playCrash, playNearMiss, playSpeedUp, playMilestone, showBadge]);
+
+  const topBadge = highestBadge(peakCombo);
 
   const generateShareImage = (): string => {
     const c = document.createElement("canvas");
@@ -504,33 +615,72 @@ function Game() {
     g.fillStyle = "#ffffff";
     g.textAlign = "center";
     g.font = "bold 48px system-ui, sans-serif";
-    g.fillText("COLOR SWITCH RUSH", 540, 180);
+    g.fillText("COLOR SWITCH RUSH", 540, 170);
+
+    if (mode === "daily") {
+      g.font = "600 22px system-ui, sans-serif";
+      g.fillStyle = "#facc15";
+      g.fillText(`DAILY CHALLENGE · ${todayKey()}`, 540, 210);
+    }
 
     g.font = "600 24px system-ui, sans-serif";
     g.fillStyle = "rgba(255,255,255,0.5)";
-    g.fillText("SCORE", 540, 380);
+    g.fillText("SCORE", 540, 370);
 
     g.fillStyle = "#ffffff";
     g.font = "bold 260px system-ui, sans-serif";
-    g.fillText(String(score), 540, 620);
+    g.fillText(String(score), 540, 610);
 
     g.font = "600 32px system-ui, sans-serif";
     g.fillStyle = "#facc15";
-    g.fillText(`BEST COMBO x${peakCombo}`, 540, 700);
+    g.fillText(`BEST COMBO x${peakCombo}`, 540, 680);
+
+    // Highest badge earned
+    if (topBadge) {
+      const badgeText = `${topBadge.emoji}  ${topBadge.label.toUpperCase()}  ${topBadge.emoji}`;
+      g.font = "bold 40px system-ui, sans-serif";
+      const w = g.measureText(badgeText).width + 80;
+      const bx = 540 - w / 2;
+      const by = 730;
+      const bh = 78;
+      // pill background
+      g.fillStyle = "rgba(250,204,21,0.15)";
+      g.strokeStyle = "rgba(250,204,21,0.7)";
+      g.lineWidth = 3;
+      const r = bh / 2;
+      g.beginPath();
+      g.moveTo(bx + r, by);
+      g.arcTo(bx + w, by, bx + w, by + bh, r);
+      g.arcTo(bx + w, by + bh, bx, by + bh, r);
+      g.arcTo(bx, by + bh, bx, by, r);
+      g.arcTo(bx, by, bx + w, by, r);
+      g.closePath();
+      g.fill();
+      g.stroke();
+      g.fillStyle = "#facc15";
+      g.textBaseline = "middle";
+      g.fillText(badgeText, 540, by + bh / 2 + 2);
+      g.textBaseline = "alphabetic";
+    }
 
     g.font = "500 22px system-ui, sans-serif";
     g.fillStyle = "rgba(255,255,255,0.55)";
-    g.fillText(`Level ${level} reached · Best ${best}`, 540, 760);
+    const bestLine = mode === "daily"
+      ? `Level ${level} · Today's best ${Math.max(dailyBest, score)}`
+      : `Level ${level} reached · Best ${Math.max(best, score)}`;
+    g.fillText(bestLine, 540, 860);
 
     g.font = "600 24px system-ui, sans-serif";
     g.fillStyle = "rgba(255,255,255,0.7)";
-    g.fillText("Can you beat it?", 540, 960);
+    g.fillText("Can you beat it?", 540, 970);
 
     return c.toDataURL("image/png");
   };
 
   const shareScore = async () => {
     const dataUrl = generateShareImage();
+    const badgeText = topBadge ? ` · ${topBadge.emoji} ${topBadge.label}` : "";
+    const modeText = mode === "daily" ? ` (Daily ${todayKey()})` : "";
     try {
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], "color-switch-rush.png", { type: "image/png" });
@@ -539,7 +689,7 @@ function Game() {
         await nav.share({
           files: [file],
           title: "Color Switch Rush",
-          text: `I scored ${score} with an x${peakCombo} combo in Color Switch Rush!`,
+          text: `I scored ${score} with an x${peakCombo} combo${badgeText}${modeText}!`,
         });
         return;
       }
@@ -572,7 +722,9 @@ function Game() {
         {/* HUD */}
         <div className="pointer-events-none absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10">
           <div>
-            <div className="text-xs uppercase tracking-widest text-white/50">Score</div>
+            <div className="text-xs uppercase tracking-widest text-white/50">
+              Score {mode === "daily" && <span className="text-yellow-300">· Daily</span>}
+            </div>
             <div className="text-3xl font-bold tabular-nums">{score}</div>
           </div>
           <div className="text-right">
@@ -582,6 +734,17 @@ function Game() {
             </div>
           </div>
         </div>
+
+        {/* Pause button */}
+        {running && !gameOver && (
+          <button
+            onClick={(e) => { e.stopPropagation(); togglePause(); }}
+            aria-label={paused ? "Resume" : "Pause"}
+            className="absolute top-3 left-1/2 -translate-x-1/2 z-20 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur border border-white/20 flex items-center justify-center text-white text-sm"
+          >
+            {paused ? "▶" : "❚❚"}
+          </button>
+        )}
 
         {running && !gameOver && (
           <div className="pointer-events-none absolute top-20 left-4 right-4 z-10">
@@ -605,16 +768,52 @@ function Game() {
         )}
 
         <div className="pointer-events-none absolute bottom-4 left-0 right-0 text-center text-xs text-white/40 tracking-wider">
-          Best {best} · Best combo x{bestCombo}
+          {mode === "daily"
+            ? <>Today's best {dailyBest} · All-time x{bestCombo}</>
+            : <>Best {best} · Best combo x{bestCombo}</>}
         </div>
+
+        {/* Live milestone badge popup */}
+        {badgePopup && (
+          <div className="pointer-events-none absolute inset-x-0 top-32 z-30 flex justify-center">
+            <div
+              key={badgePopup.combo}
+              className="px-5 py-2.5 rounded-full bg-gradient-to-br from-yellow-300 to-pink-500 text-black font-black text-sm shadow-[0_0_40px_rgba(250,204,21,0.6)] animate-fade-in flex items-center gap-2"
+            >
+              <span className="text-lg">{badgePopup.emoji}</span>
+              <span>x{badgePopup.combo} {badgePopup.label}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Pause overlay */}
+        {paused && running && !gameOver && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-40 animate-fade-in">
+            <div className="text-xs uppercase tracking-widest text-white/50 mb-2">Paused</div>
+            <div className="text-4xl font-black mb-6">❚❚</div>
+            <button
+              onClick={togglePause}
+              className="px-8 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform mb-3"
+            >
+              ▶ Resume
+            </button>
+            <button
+              onClick={() => { setPaused(false); setRunning(false); setGameOver(false); stateRef.current.running = false; stateRef.current.over = false; }}
+              className="text-white/60 hover:text-white text-xs uppercase tracking-widest"
+            >
+              Quit run
+            </button>
+            <div className="text-white/30 text-[10px] mt-4">Press P or Esc to toggle</div>
+          </div>
+        )}
 
         {/* Start screen */}
         {!running && !gameOver && !showSettings && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm z-20 animate-fade-in px-6">
             <h1 className="text-4xl font-black tracking-tight mb-1 text-center">Color Switch Rush</h1>
-            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-6">Match · Thread · Combo</p>
+            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-5">Match · Thread · Combo</p>
 
-            <div className="flex gap-3 mb-6">
+            <div className="flex gap-3 mb-5">
               {COLORS.map((c, i) => (
                 <div
                   key={c.name}
@@ -626,38 +825,40 @@ function Game() {
               ))}
             </div>
 
-            <div className="mb-6 w-full max-w-[260px] space-y-2 text-sm">
+            <div className="mb-5 w-full max-w-[260px] space-y-1.5 text-sm">
               <div className="flex items-center gap-3 text-white/80">
                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-xs font-bold">👆</span>
-                <span><b>Tap</b> anywhere to cycle color</span>
+                <span><b>Tap / Click / Space</b> — cycle color</span>
               </div>
               <div className="flex items-center gap-3 text-white/80">
-                <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-xs font-bold">🖱</span>
-                <span><b>Click</b> to cycle color</span>
+                <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-[10px] font-bold">P</span>
+                <span>Pause / resume anytime</span>
               </div>
-              <div className="flex items-center gap-3 text-white/80">
-                <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-[10px] font-bold px-1">SPACE</span>
-                <span>on keyboard</span>
-              </div>
-              <p className="text-white/50 text-xs pt-2 text-center">
-                Thread the segment matching your ball. Chain hits to build a combo.
-              </p>
             </div>
 
-            <div className="text-xs uppercase tracking-widest text-white/50 mb-1">Best</div>
-            <div className="text-xl font-bold tabular-nums mb-5">
-              {best} <span className="text-white/40 text-sm font-normal">· x{bestCombo} combo</span>
+            <div className="flex flex-col gap-2 w-full max-w-[260px] mb-3">
+              <button
+                onClick={() => reset("classic")}
+                className="px-8 py-3.5 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform shadow-[0_0_30px_rgba(255,255,255,0.3)]"
+              >
+                ▶ Play Classic
+              </button>
+              <button
+                onClick={() => reset("daily")}
+                className="px-8 py-3 rounded-full bg-gradient-to-r from-yellow-300 to-pink-500 text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform"
+              >
+                ★ Daily Challenge
+              </button>
             </div>
 
-            <button
-              onClick={reset}
-              className="px-10 py-4 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform shadow-[0_0_30px_rgba(255,255,255,0.3)]"
-            >
-              ▶ Play
-            </button>
+            <div className="text-[10px] text-white/40 uppercase tracking-widest text-center mb-3">
+              <div>Classic best: {best} · x{bestCombo}</div>
+              <div>Today's best: {dailyBest} <span className="opacity-60">({todayKey()})</span></div>
+            </div>
+
             <button
               onClick={() => setShowSettings(true)}
-              className="mt-4 text-white/60 hover:text-white text-xs uppercase tracking-widest"
+              className="text-white/60 hover:text-white text-xs uppercase tracking-widest"
             >
               ⚙ Settings
             </button>
@@ -672,6 +873,7 @@ function Game() {
               {([
                 { key: "sound", label: "Sound", desc: "Beeps & feedback tones" },
                 { key: "shake", label: "Screen shake", desc: "Rumble on near-miss & crash" },
+                { key: "reducedMotion", label: "Reduced motion", desc: "Limit shake, flashes & glow" },
                 { key: "colorblind", label: "Colorblind mode", desc: "Distinct hues + shape symbols" },
               ] as const).map((row) => {
                 const on = settings[row.key];
@@ -708,18 +910,20 @@ function Game() {
         {/* Game over */}
         {gameOver && !showSettings && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
-            <div className="text-xs uppercase tracking-widest text-white/50 mb-1">Game Over</div>
+            <div className="text-xs uppercase tracking-widest text-white/50 mb-1">
+              {mode === "daily" ? `Daily · ${todayKey()}` : "Game Over"}
+            </div>
             <div className="text-6xl font-black tabular-nums mb-1">{score}</div>
             <div className="text-white/60 mb-1">Peak combo x{peakCombo}</div>
             <div className="text-white/40 text-xs mb-3">Reached level {level}</div>
 
             {newBest ? (
               <div className="text-yellow-300 text-sm font-black uppercase tracking-widest mb-3 animate-pulse">
-                ★ New best score ★
+                ★ {mode === "daily" ? "New daily best" : "New best score"} ★
               </div>
             ) : (
               <div className="text-white/50 text-xs mb-3">
-                Best {best} · x{bestCombo} combo
+                {mode === "daily" ? `Today's best ${dailyBest}` : `Best ${best}`} · x{bestCombo} combo
               </div>
             )}
 
@@ -756,10 +960,16 @@ function Game() {
 
             <div className="flex gap-3 flex-wrap justify-center">
               <button
-                onClick={reset}
+                onClick={() => reset(mode)}
                 className="px-6 py-3 rounded-full bg-white text-black font-bold text-sm uppercase tracking-widest hover:scale-105 transition-transform"
               >
                 Play again
+              </button>
+              <button
+                onClick={() => { setGameOver(false); setRunning(false); stateRef.current.running = false; stateRef.current.over = false; }}
+                className="px-4 py-3 rounded-full border border-white/20 text-white/70 font-bold text-sm uppercase tracking-widest hover:bg-white/10 transition"
+              >
+                Menu
               </button>
               <button
                 onClick={shareScore}
