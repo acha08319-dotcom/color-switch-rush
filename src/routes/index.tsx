@@ -435,22 +435,27 @@ function Game() {
       if (s.running && !s.over && !isPaused) {
         s.time += dt;
 
-        const newLevel = 1 + Math.floor(s.time / SPEED_STEP_INTERVAL);
-        if (newLevel !== s.level) {
-          s.level = newLevel;
-          setLevel(newLevel);
-          s.speedFlashTimer = 0.7;
-          if (!settingsRef.current.reducedMotion) s.shake = Math.max(s.shake, 0.3);
-          playSpeedUp();
+        if (s.mode !== "practice") {
+          const newLevel = 1 + Math.floor(s.time / SPEED_STEP_INTERVAL);
+          if (newLevel !== s.level) {
+            s.level = newLevel;
+            setLevel(newLevel);
+            s.speedFlashTimer = 0.7;
+            if (!settingsRef.current.reducedMotion) s.shake = Math.max(s.shake, 0.3);
+            playSpeedUp();
+          }
         }
-        // Base ramp + seeded jitter in daily mode (so speed pattern is deterministic per day).
-        let speed = BASE_SPEED + (s.level - 1) * SPEED_PER_LEVEL;
-        if (s.mode === "daily") {
-          // Deterministic sinusoidal jitter based on time and seed.
-          const seedPhase = (s.speedSeed % 1000) / 1000 * Math.PI * 2;
-          const jitter = Math.sin(s.time * 0.9 + seedPhase) * 25
-            + Math.sin(s.time * 0.31 + seedPhase * 1.7) * 18;
-          speed += jitter;
+        let speed: number;
+        if (s.mode === "practice") {
+          speed = 130;
+        } else {
+          speed = BASE_SPEED + (s.level - 1) * SPEED_PER_LEVEL;
+          if (s.mode === "daily") {
+            const seedPhase = (s.speedSeed % 1000) / 1000 * Math.PI * 2;
+            const jitter = Math.sin(s.time * 0.9 + seedPhase) * 25
+              + Math.sin(s.time * 0.31 + seedPhase * 1.7) * 18;
+            speed += jitter;
+          }
         }
         s.fallSpeed = speed;
         const remaining = SPEED_STEP_INTERVAL - (s.time % SPEED_STEP_INTERVAL);
