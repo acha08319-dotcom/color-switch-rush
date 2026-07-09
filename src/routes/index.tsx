@@ -706,11 +706,14 @@ function Game() {
     g.font = "bold 48px system-ui, sans-serif";
     g.fillText("COLOR SWITCH RUSH", 540, 170);
 
-    if (mode === "daily") {
-      g.font = "600 22px system-ui, sans-serif";
-      g.fillStyle = "#facc15";
-      g.fillText(`DAILY CHALLENGE · ${todayKey()}`, 540, 210);
-    }
+    g.font = "600 22px system-ui, sans-serif";
+    g.fillStyle = mode === "daily" ? "#facc15" : "rgba(255,255,255,0.65)";
+    const modeLine = mode === "daily"
+      ? `DAILY CHALLENGE · ${todayKey()}`
+      : mode === "practice"
+        ? "PRACTICE MODE"
+        : "ENDLESS MODE";
+    g.fillText(modeLine, 540, 210);
 
     g.font = "600 24px system-ui, sans-serif";
     g.fillStyle = "rgba(255,255,255,0.5)";
