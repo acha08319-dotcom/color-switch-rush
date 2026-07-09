@@ -262,6 +262,7 @@ function Game() {
       setBest(Number(localStorage.getItem("csr_best") || "0"));
       setBestCombo(Number(localStorage.getItem("csr_bestCombo") || "0"));
       setDailyBest(Number(localStorage.getItem(`csr_daily_${todayKey()}`) || "0"));
+      setStreak(loadStreak());
     } catch {}
   }, []);
 
