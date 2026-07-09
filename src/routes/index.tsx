@@ -284,7 +284,6 @@ function Game() {
     const isDaily = selectedMode === "daily";
     const seed = isDaily ? hashStr("csr-" + todayKey()) : (Math.random() * 2 ** 32) >>> 0;
     const rand = mulberry32(seed);
-    // In daily mode, derive a seeded "speed jitter" pattern; classic uses none.
     s.rand = rand;
     s.speedSeed = seed;
     s.mode = selectedMode;
@@ -304,6 +303,10 @@ function Game() {
     s.shake = 0;
     s.level = 1;
     s.speedFlashTimer = 0;
+    s.passes = 0;
+    s.misses = 0;
+    s.chain = 0;
+    s.longestChain = 0;
     setMode(selectedMode);
     setScore(0);
     setCombo(0);
@@ -316,7 +319,19 @@ function Game() {
     setNewBest(false);
     setShowSettings(false);
     setBadgePopup(null);
+    setPasses(0);
+    setMisses(0);
+    setLongestChain(0);
     getAudio()?.resume();
+  }, []);
+
+  const quitToMenu = useCallback(() => {
+    const s = stateRef.current;
+    s.running = false;
+    s.over = false;
+    setPaused(false);
+    setRunning(false);
+    setGameOver(false);
   }, []);
 
   const togglePause = useCallback(() => {
