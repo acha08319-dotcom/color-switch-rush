@@ -1034,13 +1034,29 @@ function Game() {
         {gameOver && !showSettings && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
             <div className="text-xs uppercase tracking-widest text-white/50 mb-1">
-              {mode === "daily" ? `Daily · ${todayKey()}` : "Game Over"}
+              {mode === "daily"
+                ? `Daily · ${todayKey()}`
+                : mode === "practice"
+                  ? "Practice Run"
+                  : "Endless · Game Over"}
             </div>
             <div className="text-6xl font-black tabular-nums mb-1">{score}</div>
             <div className="text-white/60 mb-1">Peak combo x{peakCombo}</div>
-            <div className="text-white/40 text-xs mb-3">Reached level {level}</div>
+            {mode !== "practice" && (
+              <div className="text-white/40 text-xs mb-3">Reached level {level}</div>
+            )}
+            {mode === "practice" && (
+              <div className="text-cyan-300/70 text-xs mb-3">Warm-up complete · scores not saved</div>
+            )}
 
-            {newBest ? (
+            {mode === "daily" && streak > 0 && (
+              <div className="mb-3 px-3 py-1 rounded-full bg-orange-500/15 border border-orange-400/40 text-xs font-bold text-orange-200 flex items-center gap-1.5">
+                <span>🔥</span>
+                <span>{streak}-day streak</span>
+              </div>
+            )}
+
+            {mode !== "practice" && (newBest ? (
               <div className="text-yellow-300 text-sm font-black uppercase tracking-widest mb-3 animate-pulse">
                 ★ {mode === "daily" ? "New daily best" : "New best score"} ★
               </div>
@@ -1048,7 +1064,27 @@ function Game() {
               <div className="text-white/50 text-xs mb-3">
                 {mode === "daily" ? `Today's best ${dailyBest}` : `Best ${best}`} · x{bestCombo} combo
               </div>
-            )}
+            ))}
+
+            {/* Run summary */}
+            <div className="w-full max-w-[300px] mb-4 grid grid-cols-3 gap-2">
+              <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
+                <div className="text-[9px] uppercase tracking-widest text-white/50">Best combo</div>
+                <div className="text-lg font-black tabular-nums">x{peakCombo}</div>
+              </div>
+              <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
+                <div className="text-[9px] uppercase tracking-widest text-white/50">Perfect chain</div>
+                <div className="text-lg font-black tabular-nums">{longestChain}</div>
+              </div>
+              <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
+                <div className="text-[9px] uppercase tracking-widest text-white/50">Pass / Miss</div>
+                <div className="text-lg font-black tabular-nums">
+                  <span className="text-emerald-300">{passes}</span>
+                  <span className="text-white/30">/</span>
+                  <span className="text-rose-300">{misses}</span>
+                </div>
+              </div>
+            </div>
 
             {earnedBadges.length > 0 && (
               <div className="w-full max-w-[300px] mb-4">
