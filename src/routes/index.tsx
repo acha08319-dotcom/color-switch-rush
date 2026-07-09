@@ -74,6 +74,37 @@ function todayKey(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+function yesterdayKey(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function loadStreak(): number {
+  try {
+    const last = localStorage.getItem("csr_daily_last");
+    const streak = Number(localStorage.getItem("csr_daily_streak") || "0");
+    if (!last) return 0;
+    if (last === todayKey() || last === yesterdayKey()) return streak;
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+function recordDailyPlay(): number {
+  try {
+    const today = todayKey();
+    const last = localStorage.getItem("csr_daily_last");
+    let streak = Number(localStorage.getItem("csr_daily_streak") || "0");
+    if (last === today) return streak;
+    if (last === yesterdayKey()) streak += 1;
+    else streak = 1;
+    localStorage.setItem("csr_daily_streak", String(streak));
+    localStorage.setItem("csr_daily_last", today);
+    return streak;
+  } catch {
+    return 0;
+  }
+}
 
 function makeGate(y: number, level: number, rand: () => number): Gate {
   const segs = [0, 1, 2, 3];
