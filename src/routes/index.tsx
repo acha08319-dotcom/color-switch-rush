@@ -35,7 +35,13 @@ const MILESTONES: Milestone[] = [
   { combo: 100, label: "Godlike",     emoji: "👑" },
 ];
 
-type Mode = "classic" | "daily";
+type Mode = "classic" | "daily" | "practice";
+
+const MODE_LABEL: Record<Mode, string> = {
+  classic: "Endless",
+  daily: "Daily",
+  practice: "Practice",
+};
 
 type Gate = {
   y: number;
@@ -67,6 +73,37 @@ function hashStr(s: string): number {
 function todayKey(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function yesterdayKey(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function loadStreak(): number {
+  try {
+    const last = localStorage.getItem("csr_daily_last");
+    const streak = Number(localStorage.getItem("csr_daily_streak") || "0");
+    if (!last) return 0;
+    if (last === todayKey() || last === yesterdayKey()) return streak;
+    return 0;
+  } catch {
+    return 0;
+  }
+}
+function recordDailyPlay(): number {
+  try {
+    const today = todayKey();
+    const last = localStorage.getItem("csr_daily_last");
+    let streak = Number(localStorage.getItem("csr_daily_streak") || "0");
+    if (last === today) return streak;
+    if (last === yesterdayKey()) streak += 1;
+    else streak = 1;
+    localStorage.setItem("csr_daily_streak", String(streak));
+    localStorage.setItem("csr_daily_last", today);
+    return streak;
+  } catch {
+    return 0;
+  }
 }
 
 function makeGate(y: number, level: number, rand: () => number): Gate {
@@ -153,6 +190,10 @@ function Game() {
   const [mode, setMode] = useState<Mode>("classic");
   const [badgePopup, setBadgePopup] = useState<Milestone | null>(null);
   const badgeTimerRef = useRef<number | null>(null);
+  const [passes, setPasses] = useState(0);
+  const [misses, setMisses] = useState(0);
+  const [longestChain, setLongestChain] = useState(0);
+  const [streak, setStreak] = useState(0);
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -181,6 +222,10 @@ function Game() {
     rand: Math.random as () => number,
     speedSeed: 0,
     mode: "classic" as Mode,
+    passes: 0,
+    misses: 0,
+    chain: 0,
+    longestChain: 0,
   });
 
   const sfx = useCallback((fn: () => void) => {
@@ -217,6 +262,7 @@ function Game() {
       setBest(Number(localStorage.getItem("csr_best") || "0"));
       setBestCombo(Number(localStorage.getItem("csr_bestCombo") || "0"));
       setDailyBest(Number(localStorage.getItem(`csr_daily_${todayKey()}`) || "0"));
+      setStreak(loadStreak());
     } catch {}
   }, []);
 
@@ -238,7 +284,6 @@ function Game() {
     const isDaily = selectedMode === "daily";
     const seed = isDaily ? hashStr("csr-" + todayKey()) : (Math.random() * 2 ** 32) >>> 0;
     const rand = mulberry32(seed);
-    // In daily mode, derive a seeded "speed jitter" pattern; classic uses none.
     s.rand = rand;
     s.speedSeed = seed;
     s.mode = selectedMode;
@@ -258,6 +303,10 @@ function Game() {
     s.shake = 0;
     s.level = 1;
     s.speedFlashTimer = 0;
+    s.passes = 0;
+    s.misses = 0;
+    s.chain = 0;
+    s.longestChain = 0;
     setMode(selectedMode);
     setScore(0);
     setCombo(0);
@@ -270,7 +319,19 @@ function Game() {
     setNewBest(false);
     setShowSettings(false);
     setBadgePopup(null);
+    setPasses(0);
+    setMisses(0);
+    setLongestChain(0);
     getAudio()?.resume();
+  }, []);
+
+  const quitToMenu = useCallback(() => {
+    const s = stateRef.current;
+    s.running = false;
+    s.over = false;
+    setPaused(false);
+    setRunning(false);
+    setGameOver(false);
   }, []);
 
   const togglePause = useCallback(() => {
@@ -293,6 +354,11 @@ function Game() {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      if (e.code === "KeyQ" && pausedRef.current) {
+        e.preventDefault();
+        quitToMenu();
+        return;
+      }
       if (e.code === "Space") {
         e.preventDefault();
         cycleColor();
@@ -303,7 +369,7 @@ function Game() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [cycleColor, togglePause]);
+  }, [cycleColor, togglePause, quitToMenu]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -369,22 +435,27 @@ function Game() {
       if (s.running && !s.over && !isPaused) {
         s.time += dt;
 
-        const newLevel = 1 + Math.floor(s.time / SPEED_STEP_INTERVAL);
-        if (newLevel !== s.level) {
-          s.level = newLevel;
-          setLevel(newLevel);
-          s.speedFlashTimer = 0.7;
-          if (!settingsRef.current.reducedMotion) s.shake = Math.max(s.shake, 0.3);
-          playSpeedUp();
+        if (s.mode !== "practice") {
+          const newLevel = 1 + Math.floor(s.time / SPEED_STEP_INTERVAL);
+          if (newLevel !== s.level) {
+            s.level = newLevel;
+            setLevel(newLevel);
+            s.speedFlashTimer = 0.7;
+            if (!settingsRef.current.reducedMotion) s.shake = Math.max(s.shake, 0.3);
+            playSpeedUp();
+          }
         }
-        // Base ramp + seeded jitter in daily mode (so speed pattern is deterministic per day).
-        let speed = BASE_SPEED + (s.level - 1) * SPEED_PER_LEVEL;
-        if (s.mode === "daily") {
-          // Deterministic sinusoidal jitter based on time and seed.
-          const seedPhase = (s.speedSeed % 1000) / 1000 * Math.PI * 2;
-          const jitter = Math.sin(s.time * 0.9 + seedPhase) * 25
-            + Math.sin(s.time * 0.31 + seedPhase * 1.7) * 18;
-          speed += jitter;
+        let speed: number;
+        if (s.mode === "practice") {
+          speed = 130;
+        } else {
+          speed = BASE_SPEED + (s.level - 1) * SPEED_PER_LEVEL;
+          if (s.mode === "daily") {
+            const seedPhase = (s.speedSeed % 1000) / 1000 * Math.PI * 2;
+            const jitter = Math.sin(s.time * 0.9 + seedPhase) * 25
+              + Math.sin(s.time * 0.31 + seedPhase * 1.7) * 18;
+            speed += jitter;
+          }
         }
         s.fallSpeed = speed;
         const remaining = SPEED_STEP_INTERVAL - (s.time % SPEED_STEP_INTERVAL);
@@ -428,12 +499,24 @@ function Game() {
               const gained = 1 + Math.floor(s.combo / 3);
               s.score += gained;
               s.combo += 1;
+              s.passes += 1;
+              const wasNearMiss = s.nearMissGlow > 0.5;
+              if (wasNearMiss) {
+                s.chain = 0;
+              } else {
+                s.chain += 1;
+                if (s.chain > s.longestChain) {
+                  s.longestChain = s.chain;
+                  setLongestChain(s.longestChain);
+                }
+              }
               if (s.combo > s.peakCombo) {
                 s.peakCombo = s.combo;
                 setPeakCombo(s.peakCombo);
               }
               setScore(s.score);
               setCombo(s.combo);
+              setPasses(s.passes);
               playPass(s.combo);
               const hit = MILESTONES.find((m) => m.combo === s.combo);
               if (hit) {
@@ -454,6 +537,9 @@ function Game() {
               s.running = false;
               s.missFlash = 1;
               s.shake = settingsRef.current.reducedMotion ? 0 : 1;
+              s.misses += 1;
+              s.chain = 0;
+              setMisses(s.misses);
               playCrash();
               let nb = false;
               try {
@@ -464,7 +550,7 @@ function Game() {
                     setBest(s.score);
                     nb = true;
                   }
-                } else {
+                } else if (s.mode === "daily") {
                   const key = `csr_daily_${todayKey()}`;
                   const prev = Number(localStorage.getItem(key) || "0");
                   if (s.score > prev) {
@@ -472,11 +558,14 @@ function Game() {
                     setDailyBest(s.score);
                     nb = true;
                   }
+                  setStreak(recordDailyPlay());
                 }
-                const prevBC = Number(localStorage.getItem("csr_bestCombo") || "0");
-                if (s.peakCombo > prevBC) {
-                  localStorage.setItem("csr_bestCombo", String(s.peakCombo));
-                  setBestCombo(s.peakCombo);
+                if (s.mode !== "practice") {
+                  const prevBC = Number(localStorage.getItem("csr_bestCombo") || "0");
+                  if (s.peakCombo > prevBC) {
+                    localStorage.setItem("csr_bestCombo", String(s.peakCombo));
+                    setBestCombo(s.peakCombo);
+                  }
                 }
               } catch {}
               setNewBest(nb);
@@ -617,11 +706,14 @@ function Game() {
     g.font = "bold 48px system-ui, sans-serif";
     g.fillText("COLOR SWITCH RUSH", 540, 170);
 
-    if (mode === "daily") {
-      g.font = "600 22px system-ui, sans-serif";
-      g.fillStyle = "#facc15";
-      g.fillText(`DAILY CHALLENGE · ${todayKey()}`, 540, 210);
-    }
+    g.font = "600 22px system-ui, sans-serif";
+    g.fillStyle = mode === "daily" ? "#facc15" : "rgba(255,255,255,0.65)";
+    const modeLine = mode === "daily"
+      ? `DAILY CHALLENGE · ${todayKey()}`
+      : mode === "practice"
+        ? "PRACTICE MODE"
+        : "ENDLESS MODE";
+    g.fillText(modeLine, 540, 210);
 
     g.font = "600 24px system-ui, sans-serif";
     g.fillStyle = "rgba(255,255,255,0.5)";
@@ -680,7 +772,11 @@ function Game() {
   const shareScore = async () => {
     const dataUrl = generateShareImage();
     const badgeText = topBadge ? ` · ${topBadge.emoji} ${topBadge.label}` : "";
-    const modeText = mode === "daily" ? ` (Daily ${todayKey()})` : "";
+    const modeText = mode === "daily"
+      ? ` (Daily ${todayKey()})`
+      : mode === "practice"
+        ? " (Practice)"
+        : " (Endless)";
     try {
       const blob = await (await fetch(dataUrl)).blob();
       const file = new File([blob], "color-switch-rush.png", { type: "image/png" });
@@ -746,7 +842,7 @@ function Game() {
           </button>
         )}
 
-        {running && !gameOver && (
+        {running && !gameOver && mode !== "practice" && (
           <div className="pointer-events-none absolute top-20 left-4 right-4 z-10">
             <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-white/60 mb-1">
               <span>Level {level}</span>
@@ -767,10 +863,18 @@ function Game() {
           </div>
         )}
 
+        {running && !gameOver && mode === "practice" && (
+          <div className="pointer-events-none absolute top-20 left-0 right-0 text-center text-[10px] uppercase tracking-widest text-cyan-300/80">
+            Practice · fixed slow speed
+          </div>
+        )}
+
         <div className="pointer-events-none absolute bottom-4 left-0 right-0 text-center text-xs text-white/40 tracking-wider">
           {mode === "daily"
             ? <>Today's best {dailyBest} · All-time x{bestCombo}</>
-            : <>Best {best} · Best combo x{bestCombo}</>}
+            : mode === "practice"
+              ? <>Warm-up run · scores not saved</>
+              : <>Best {best} · Best combo x{bestCombo}</>}
         </div>
 
         {/* Live milestone badge popup */}
@@ -788,32 +892,45 @@ function Game() {
 
         {/* Pause overlay */}
         {paused && running && !gameOver && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-40 animate-fade-in">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-40 animate-fade-in px-6">
             <div className="text-xs uppercase tracking-widest text-white/50 mb-2">Paused</div>
             <div className="text-4xl font-black mb-6">❚❚</div>
-            <button
-              onClick={togglePause}
-              className="px-8 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform mb-3"
-            >
-              ▶ Resume
-            </button>
-            <button
-              onClick={() => { setPaused(false); setRunning(false); setGameOver(false); stateRef.current.running = false; stateRef.current.over = false; }}
-              className="text-white/60 hover:text-white text-xs uppercase tracking-widest"
-            >
-              Quit run
-            </button>
-            <div className="text-white/30 text-[10px] mt-4">Press P or Esc to toggle</div>
+            <div className="flex flex-col gap-2 w-full max-w-[220px]">
+              <button
+                onClick={togglePause}
+                className="px-8 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform"
+              >
+                ▶ Resume
+              </button>
+              <button
+                onClick={quitToMenu}
+                className="px-8 py-3 rounded-full border border-white/30 text-white/90 font-black text-sm uppercase tracking-widest hover:bg-white/10 transition"
+              >
+                ✕ Quit run
+              </button>
+            </div>
+            <div className="text-white/40 text-[10px] mt-5 space-y-0.5 text-center">
+              <div><b className="text-white/60">P / Esc</b> — resume · <b className="text-white/60">Q</b> — quit</div>
+              <div>Quitting discards this run</div>
+            </div>
           </div>
         )}
 
         {/* Start screen */}
         {!running && !gameOver && !showSettings && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm z-20 animate-fade-in px-6">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
             <h1 className="text-4xl font-black tracking-tight mb-1 text-center">Color Switch Rush</h1>
-            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-5">Match · Thread · Combo</p>
+            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-4">Match · Thread · Combo</p>
 
-            <div className="flex gap-3 mb-5">
+            {streak > 0 && (
+              <div className="mb-4 px-3 py-1.5 rounded-full bg-orange-500/15 border border-orange-400/40 flex items-center gap-1.5 text-xs font-bold text-orange-200">
+                <span>🔥</span>
+                <span>{streak}-day streak</span>
+                <span className="text-orange-200/60 font-medium">· keep it alive</span>
+              </div>
+            )}
+
+            <div className="flex gap-3 mb-4">
               {COLORS.map((c, i) => (
                 <div
                   key={c.name}
@@ -825,7 +942,7 @@ function Game() {
               ))}
             </div>
 
-            <div className="mb-5 w-full max-w-[260px] space-y-1.5 text-sm">
+            <div className="mb-4 w-full max-w-[260px] space-y-1.5 text-sm">
               <div className="flex items-center gap-3 text-white/80">
                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-xs font-bold">👆</span>
                 <span><b>Tap / Click / Space</b> — cycle color</span>
@@ -841,7 +958,7 @@ function Game() {
                 onClick={() => reset("classic")}
                 className="px-8 py-3.5 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform shadow-[0_0_30px_rgba(255,255,255,0.3)]"
               >
-                ▶ Play Classic
+                ▶ Play Endless
               </button>
               <button
                 onClick={() => reset("daily")}
@@ -849,10 +966,16 @@ function Game() {
               >
                 ★ Daily Challenge
               </button>
+              <button
+                onClick={() => reset("practice")}
+                className="px-8 py-2.5 rounded-full border border-cyan-300/50 text-cyan-100 font-bold text-xs uppercase tracking-widest hover:bg-cyan-300/10 transition"
+              >
+                ◐ Practice (slow warm-up)
+              </button>
             </div>
 
             <div className="text-[10px] text-white/40 uppercase tracking-widest text-center mb-3">
-              <div>Classic best: {best} · x{bestCombo}</div>
+              <div>Endless best: {best} · x{bestCombo}</div>
               <div>Today's best: {dailyBest} <span className="opacity-60">({todayKey()})</span></div>
             </div>
 
@@ -911,13 +1034,29 @@ function Game() {
         {gameOver && !showSettings && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
             <div className="text-xs uppercase tracking-widest text-white/50 mb-1">
-              {mode === "daily" ? `Daily · ${todayKey()}` : "Game Over"}
+              {mode === "daily"
+                ? `Daily · ${todayKey()}`
+                : mode === "practice"
+                  ? "Practice Run"
+                  : "Endless · Game Over"}
             </div>
             <div className="text-6xl font-black tabular-nums mb-1">{score}</div>
             <div className="text-white/60 mb-1">Peak combo x{peakCombo}</div>
-            <div className="text-white/40 text-xs mb-3">Reached level {level}</div>
+            {mode !== "practice" && (
+              <div className="text-white/40 text-xs mb-3">Reached level {level}</div>
+            )}
+            {mode === "practice" && (
+              <div className="text-cyan-300/70 text-xs mb-3">Warm-up complete · scores not saved</div>
+            )}
 
-            {newBest ? (
+            {mode === "daily" && streak > 0 && (
+              <div className="mb-3 px-3 py-1 rounded-full bg-orange-500/15 border border-orange-400/40 text-xs font-bold text-orange-200 flex items-center gap-1.5">
+                <span>🔥</span>
+                <span>{streak}-day streak</span>
+              </div>
+            )}
+
+            {mode !== "practice" && (newBest ? (
               <div className="text-yellow-300 text-sm font-black uppercase tracking-widest mb-3 animate-pulse">
                 ★ {mode === "daily" ? "New daily best" : "New best score"} ★
               </div>
@@ -925,7 +1064,27 @@ function Game() {
               <div className="text-white/50 text-xs mb-3">
                 {mode === "daily" ? `Today's best ${dailyBest}` : `Best ${best}`} · x{bestCombo} combo
               </div>
-            )}
+            ))}
+
+            {/* Run summary */}
+            <div className="w-full max-w-[300px] mb-4 grid grid-cols-3 gap-2">
+              <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
+                <div className="text-[9px] uppercase tracking-widest text-white/50">Best combo</div>
+                <div className="text-lg font-black tabular-nums">x{peakCombo}</div>
+              </div>
+              <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
+                <div className="text-[9px] uppercase tracking-widest text-white/50">Perfect chain</div>
+                <div className="text-lg font-black tabular-nums">{longestChain}</div>
+              </div>
+              <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
+                <div className="text-[9px] uppercase tracking-widest text-white/50">Pass / Miss</div>
+                <div className="text-lg font-black tabular-nums">
+                  <span className="text-emerald-300">{passes}</span>
+                  <span className="text-white/30">/</span>
+                  <span className="text-rose-300">{misses}</span>
+                </div>
+              </div>
+            </div>
 
             {earnedBadges.length > 0 && (
               <div className="w-full max-w-[300px] mb-4">
