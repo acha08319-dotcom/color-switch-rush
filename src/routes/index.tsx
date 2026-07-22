@@ -1182,8 +1182,9 @@ function Game() {
               onClick={() => setShowSettings(false)}
               className="px-8 py-3 rounded-full bg-white text-black font-bold text-sm uppercase tracking-widest hover:scale-105 transition-transform"
             >
-              Done
+              {t.done}
             </button>
+
           </div>
         )}
 
