@@ -1193,19 +1193,20 @@ function Game() {
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
             <div className="text-xs uppercase tracking-widest text-white/50 mb-1">
               {mode === "daily"
-                ? `Daily · ${todayKey()}`
+                ? `${t.modeDaily} · ${todayKey()}`
                 : mode === "practice"
-                  ? "Practice Run"
-                  : "Endless · Game Over"}
+                  ? t.practiceRun
+                  : `${t.modeEndless} · ${t.gameOver}`}
             </div>
             <div className="text-6xl font-black tabular-nums mb-1">{score}</div>
-            <div className="text-white/60 mb-1">Peak combo x{peakCombo}</div>
+            <div className="text-white/60 mb-1">{t.peakCombo} x{peakCombo}</div>
             {mode !== "practice" && (
-              <div className="text-white/40 text-xs mb-3">Reached level {level}</div>
+              <div className="text-white/40 text-xs mb-3">{t.reachedLevel} {level}</div>
             )}
             {mode === "practice" && (
-              <div className="text-cyan-300/70 text-xs mb-3">Warm-up complete · scores not saved</div>
+              <div className="text-cyan-300/70 text-xs mb-3">{t.practiceComplete}</div>
             )}
+
 
             {mode === "daily" && streak > 0 && (
               <div className="mb-3 px-3 py-1 rounded-full bg-orange-500/15 border border-orange-400/40 text-xs font-bold text-orange-200 flex items-center gap-1.5">
