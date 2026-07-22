@@ -1,5 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { detectLanguage, getDict, type Dict, type Lang } from "../lib/i18n";
+import { PlayablesDebugPanel } from "../components/PlayablesDebugPanel";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
