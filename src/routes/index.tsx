@@ -1065,14 +1065,14 @@ function Game() {
         {/* Start screen */}
         {!running && !gameOver && !showSettings && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
-            <h1 className="text-4xl font-black tracking-tight mb-1 text-center">Color Switch Rush</h1>
-            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-4">Match · Thread · Combo</p>
+            <h1 className="text-4xl font-black tracking-tight mb-1 text-center">{t.title}</h1>
+            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-4">{t.tagline}</p>
 
             {streak > 0 && (
               <div className="mb-4 px-3 py-1.5 rounded-full bg-orange-500/15 border border-orange-400/40 flex items-center gap-1.5 text-xs font-bold text-orange-200">
                 <span>🔥</span>
-                <span>{streak}-day streak</span>
-                <span className="text-orange-200/60 font-medium">· keep it alive</span>
+                <span>{t.streakDays(streak)}</span>
+                <span className="text-orange-200/60 font-medium">· {t.streakKeep}</span>
               </div>
             )}
 
@@ -1091,11 +1091,11 @@ function Game() {
             <div className="mb-4 w-full max-w-[260px] space-y-1.5 text-sm">
               <div className="flex items-center gap-3 text-white/80">
                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-xs font-bold">👆</span>
-                <span><b>Tap / Click / Space</b> — cycle color</span>
+                <span><b>Tap / Click / Space</b> — {t.cycleColor}</span>
               </div>
               <div className="flex items-center gap-3 text-white/80">
                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-[10px] font-bold">P</span>
-                <span>Pause / resume anytime</span>
+                <span>{t.pauseResumeAnytime}</span>
               </div>
             </div>
 
@@ -1104,34 +1104,44 @@ function Game() {
                 onClick={() => reset("classic")}
                 className="px-8 py-3.5 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform shadow-[0_0_30px_rgba(255,255,255,0.3)]"
               >
-                ▶ Play Endless
+                {t.playEndless}
               </button>
               <button
                 onClick={() => reset("daily")}
                 className="px-8 py-3 rounded-full bg-gradient-to-r from-yellow-300 to-pink-500 text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform"
               >
-                ★ Daily Challenge
+                {t.playDaily}
               </button>
               <button
                 onClick={() => reset("practice")}
                 className="px-8 py-2.5 rounded-full border border-cyan-300/50 text-cyan-100 font-bold text-xs uppercase tracking-widest hover:bg-cyan-300/10 transition"
               >
-                ◐ Practice (slow warm-up)
+                {t.playPractice}
               </button>
             </div>
 
             <div className="text-[10px] text-white/40 uppercase tracking-widest text-center mb-3">
-              <div>Endless best: {best} · x{bestCombo}</div>
-              <div>Today's best: {dailyBest} <span className="opacity-60">({todayKey()})</span></div>
+              <div>{t.modeEndless} {t.best}: {best} · x{bestCombo}</div>
+              <div>{t.todaysBest}: {dailyBest} <span className="opacity-60">({todayKey()})</span></div>
             </div>
 
-            <button
-              onClick={() => setShowSettings(true)}
-              className="text-white/60 hover:text-white text-xs uppercase tracking-widest"
-            >
-              ⚙ Settings
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowSettings(true)}
+                className="text-white/60 hover:text-white text-xs uppercase tracking-widest"
+              >
+                ⚙ {t.settings}
+              </button>
+              <span className="text-white/20">·</span>
+              <button
+                onClick={() => setShowDebug(true)}
+                className="text-white/40 hover:text-white text-[10px] uppercase tracking-widest"
+              >
+                🔧 {t.debugPanel}
+              </button>
+            </div>
           </div>
+
         )}
 
         {/* Settings */}
