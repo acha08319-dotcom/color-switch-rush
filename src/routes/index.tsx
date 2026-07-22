@@ -961,13 +961,14 @@ function Game() {
         <div className="pointer-events-none absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10">
           <div>
             <div className="text-xs uppercase tracking-widest text-white/50">
-              Score {mode === "daily" && <span className="text-yellow-300">· Daily</span>}
+              {t.score} {mode === "daily" && <span className="text-yellow-300">· {t.modeDaily}</span>}
             </div>
             <div className="text-3xl font-bold tabular-nums">{score}</div>
           </div>
           <div className="text-right">
-            <div className="text-xs uppercase tracking-widest text-white/50">Combo</div>
+            <div className="text-xs uppercase tracking-widest text-white/50">{t.combo}</div>
             <div className={`text-3xl font-bold tabular-nums ${combo >= 5 ? "text-yellow-300" : ""}`}>
+
               x{combo}
             </div>
           </div>
