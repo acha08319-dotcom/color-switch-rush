@@ -1147,14 +1147,15 @@ function Game() {
         {/* Settings */}
         {showSettings && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-30 animate-fade-in px-6">
-            <h2 className="text-2xl font-black tracking-tight mb-6">Settings</h2>
+            <h2 className="text-2xl font-black tracking-tight mb-6">{t.settings}</h2>
             <div className="w-full max-w-[280px] space-y-3 mb-6">
               {([
-                { key: "sound", label: "Sound", desc: "Beeps & feedback tones" },
-                { key: "shake", label: "Screen shake", desc: "Rumble on near-miss & crash" },
-                { key: "reducedMotion", label: "Reduced motion", desc: "Limit shake, flashes & glow" },
-                { key: "colorblind", label: "Colorblind mode", desc: "Distinct hues + shape symbols" },
+                { key: "sound", label: t.sound, desc: t.soundDesc },
+                { key: "shake", label: t.shake, desc: t.shakeDesc },
+                { key: "reducedMotion", label: t.reducedMotion, desc: t.reducedMotionDesc },
+                { key: "colorblind", label: t.colorblind, desc: t.colorblindDesc },
               ] as const).map((row) => {
+
                 const on = settings[row.key];
                 return (
                   <button
