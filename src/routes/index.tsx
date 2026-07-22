@@ -988,9 +988,10 @@ function Game() {
         {running && !gameOver && mode !== "practice" && (
           <div className="pointer-events-none absolute top-20 left-4 right-4 z-10">
             <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-white/60 mb-1">
-              <span>Level {level}</span>
+              <span>{t.level} {level}</span>
               <span className={nextSpeedIn < 1.5 ? "text-yellow-300 animate-pulse" : ""}>
-                Speed up in {nextSpeedIn.toFixed(1)}s
+                {t.speedUpIn} {nextSpeedIn.toFixed(1)}s
+
               </span>
             </div>
             <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
