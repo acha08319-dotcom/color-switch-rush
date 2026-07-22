@@ -1211,32 +1211,32 @@ function Game() {
             {mode === "daily" && streak > 0 && (
               <div className="mb-3 px-3 py-1 rounded-full bg-orange-500/15 border border-orange-400/40 text-xs font-bold text-orange-200 flex items-center gap-1.5">
                 <span>🔥</span>
-                <span>{streak}-day streak</span>
+                <span>{t.streakDays(streak)}</span>
               </div>
             )}
 
             {mode !== "practice" && (newBest ? (
               <div className="text-yellow-300 text-sm font-black uppercase tracking-widest mb-3 animate-pulse">
-                ★ {mode === "daily" ? "New daily best" : "New best score"} ★
+                ★ {mode === "daily" ? t.newDailyBest : t.newBest} ★
               </div>
             ) : (
               <div className="text-white/50 text-xs mb-3">
-                {mode === "daily" ? `Today's best ${dailyBest}` : `Best ${best}`} · x{bestCombo} combo
+                {mode === "daily" ? `${t.todaysBest} ${dailyBest}` : `${t.best} ${best}`} · x{bestCombo} {t.combo}
               </div>
             ))}
 
             {/* Run summary */}
             <div className="w-full max-w-[300px] mb-4 grid grid-cols-3 gap-2">
               <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
-                <div className="text-[9px] uppercase tracking-widest text-white/50">Best combo</div>
+                <div className="text-[9px] uppercase tracking-widest text-white/50">{t.bestPass}</div>
                 <div className="text-lg font-black tabular-nums">x{peakCombo}</div>
               </div>
               <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
-                <div className="text-[9px] uppercase tracking-widest text-white/50">Perfect chain</div>
+                <div className="text-[9px] uppercase tracking-widest text-white/50">{t.perfectChain}</div>
                 <div className="text-lg font-black tabular-nums">{longestChain}</div>
               </div>
               <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
-                <div className="text-[9px] uppercase tracking-widest text-white/50">Pass / Miss</div>
+                <div className="text-[9px] uppercase tracking-widest text-white/50">{t.passMiss}</div>
                 <div className="text-lg font-black tabular-nums">
                   <span className="text-emerald-300">{passes}</span>
                   <span className="text-white/30">/</span>
@@ -1248,7 +1248,7 @@ function Game() {
             {earnedBadges.length > 0 && (
               <div className="w-full max-w-[300px] mb-4">
                 <div className="text-[10px] uppercase tracking-widest text-white/50 mb-2 text-center">
-                  Combo Badges Earned
+                  {t.badgesEarned}
                 </div>
                 <div className="flex flex-wrap gap-2 justify-center">
                   {earnedBadges.map((b) => (
@@ -1264,7 +1264,7 @@ function Game() {
                 </div>
                 {nextBadge && (
                   <div className="text-[10px] text-white/40 text-center mt-2">
-                    Next: x{nextBadge.combo} {nextBadge.label} — {nextBadge.combo - peakCombo} to go
+                    {t.nextBadge(nextBadge.combo, nextBadge.label, nextBadge.combo - peakCombo)}
                   </div>
                 )}
               </div>
@@ -1272,7 +1272,7 @@ function Game() {
 
             {earnedBadges.length === 0 && nextBadge && (
               <div className="text-[10px] text-white/40 mb-4">
-                Chain x{nextBadge.combo} for your first badge
+                {t.firstBadgeHint(nextBadge.combo)}
               </div>
             )}
 
@@ -1281,19 +1281,19 @@ function Game() {
                 onClick={() => reset(mode)}
                 className="px-6 py-3 rounded-full bg-white text-black font-bold text-sm uppercase tracking-widest hover:scale-105 transition-transform"
               >
-                Play again
+                {t.playAgain}
               </button>
               <button
                 onClick={() => { setGameOver(false); setRunning(false); stateRef.current.running = false; stateRef.current.over = false; }}
                 className="px-4 py-3 rounded-full border border-white/20 text-white/70 font-bold text-sm uppercase tracking-widest hover:bg-white/10 transition"
               >
-                Menu
+                {t.menu}
               </button>
               <button
                 onClick={shareScore}
                 className="px-6 py-3 rounded-full border border-white/40 text-white font-bold text-sm uppercase tracking-widest hover:bg-white/10 transition"
               >
-                Share
+                {t.share}
               </button>
               <button
                 onClick={() => setShowSettings(true)}
@@ -1304,6 +1304,21 @@ function Game() {
             </div>
           </div>
         )}
+
+        <PlayablesDebugPanel
+          open={showDebug}
+          onClose={() => setShowDebug(false)}
+          labels={{
+            title: t.debugPanel,
+            run: t.runTests,
+            running: t.running,
+            close: t.close,
+            pass: t.passed,
+            fail: t.failed,
+            skip: t.skipped,
+          }}
+        />
+
       </div>
     </div>
   );
