@@ -276,7 +276,9 @@ function Game() {
   useEffect(() => {
     loadBests();
     setSettings(loadSettings());
+    detectLanguage().then((l) => setLang(l)).catch(() => {});
   }, [loadBests]);
+
 
   // YouTube Playables SDK integration.
   useEffect(() => {
