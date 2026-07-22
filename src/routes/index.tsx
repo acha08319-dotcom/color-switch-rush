@@ -1,5 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
+import { detectLanguage, getDict, type Dict, type Lang } from "../lib/i18n";
+import { PlayablesDebugPanel } from "../components/PlayablesDebugPanel";
+
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -194,6 +197,10 @@ function Game() {
   const [misses, setMisses] = useState(0);
   const [longestChain, setLongestChain] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [lang, setLang] = useState<Lang>("en");
+  const [showDebug, setShowDebug] = useState(false);
+  const t: Dict = getDict(lang);
+
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
@@ -269,7 +276,9 @@ function Game() {
   useEffect(() => {
     loadBests();
     setSettings(loadSettings());
+    detectLanguage().then((l) => setLang(l)).catch(() => {});
   }, [loadBests]);
+
 
   // YouTube Playables SDK integration.
   useEffect(() => {
@@ -952,13 +961,14 @@ function Game() {
         <div className="pointer-events-none absolute top-0 left-0 right-0 p-4 flex justify-between items-start z-10">
           <div>
             <div className="text-xs uppercase tracking-widest text-white/50">
-              Score {mode === "daily" && <span className="text-yellow-300">· Daily</span>}
+              {t.score} {mode === "daily" && <span className="text-yellow-300">· {t.modeDaily}</span>}
             </div>
             <div className="text-3xl font-bold tabular-nums">{score}</div>
           </div>
           <div className="text-right">
-            <div className="text-xs uppercase tracking-widest text-white/50">Combo</div>
+            <div className="text-xs uppercase tracking-widest text-white/50">{t.combo}</div>
             <div className={`text-3xl font-bold tabular-nums ${combo >= 5 ? "text-yellow-300" : ""}`}>
+
               x{combo}
             </div>
           </div>
@@ -968,7 +978,7 @@ function Game() {
         {running && !gameOver && (
           <button
             onClick={(e) => { e.stopPropagation(); togglePause(); }}
-            aria-label={paused ? "Resume" : "Pause"}
+            aria-label={paused ? t.resume : t.paused}
             className="absolute top-3 left-1/2 -translate-x-1/2 z-20 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur border border-white/20 flex items-center justify-center text-white text-sm"
           >
             {paused ? "▶" : "❚❚"}
@@ -978,9 +988,10 @@ function Game() {
         {running && !gameOver && mode !== "practice" && (
           <div className="pointer-events-none absolute top-20 left-4 right-4 z-10">
             <div className="flex items-center justify-between text-[10px] uppercase tracking-widest text-white/60 mb-1">
-              <span>Level {level}</span>
+              <span>{t.level} {level}</span>
               <span className={nextSpeedIn < 1.5 ? "text-yellow-300 animate-pulse" : ""}>
-                Speed up in {nextSpeedIn.toFixed(1)}s
+                {t.speedUpIn} {nextSpeedIn.toFixed(1)}s
+
               </span>
             </div>
             <div className="h-1 w-full bg-white/10 rounded-full overflow-hidden">
@@ -998,17 +1009,18 @@ function Game() {
 
         {running && !gameOver && mode === "practice" && (
           <div className="pointer-events-none absolute top-20 left-0 right-0 text-center text-[10px] uppercase tracking-widest text-cyan-300/80">
-            Practice · fixed slow speed
+            {t.practiceHint}
           </div>
         )}
 
         <div className="pointer-events-none absolute bottom-4 left-0 right-0 text-center text-xs text-white/40 tracking-wider">
           {mode === "daily"
-            ? <>Today's best {dailyBest} · All-time x{bestCombo}</>
+            ? <>{t.todaysBest} {dailyBest} · {t.allTime} x{bestCombo}</>
             : mode === "practice"
-              ? <>Warm-up run · scores not saved</>
-              : <>Best {best} · Best combo x{bestCombo}</>}
+              ? <>{t.practiceComplete}</>
+              : <>{t.best} {best} · {t.bestCombo} x{bestCombo}</>}
         </div>
+
 
         {/* Live milestone badge popup */}
         {badgePopup && (
@@ -1026,40 +1038,41 @@ function Game() {
         {/* Pause overlay */}
         {paused && running && !gameOver && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 backdrop-blur-sm z-40 animate-fade-in px-6">
-            <div className="text-xs uppercase tracking-widest text-white/50 mb-2">Paused</div>
+            <div className="text-xs uppercase tracking-widest text-white/50 mb-2">{t.paused}</div>
             <div className="text-4xl font-black mb-6">❚❚</div>
             <div className="flex flex-col gap-2 w-full max-w-[220px]">
               <button
                 onClick={togglePause}
                 className="px-8 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform"
               >
-                ▶ Resume
+                {t.resume}
               </button>
               <button
                 onClick={quitToMenu}
                 className="px-8 py-3 rounded-full border border-white/30 text-white/90 font-black text-sm uppercase tracking-widest hover:bg-white/10 transition"
               >
-                ✕ Quit run
+                {t.quitRun}
               </button>
             </div>
             <div className="text-white/40 text-[10px] mt-5 space-y-0.5 text-center">
-              <div><b className="text-white/60">P / Esc</b> — resume · <b className="text-white/60">Q</b> — quit</div>
-              <div>Quitting discards this run</div>
+              <div><b className="text-white/60">P / Esc</b> — {t.quitHint}</div>
+              <div>{t.quitDiscards}</div>
             </div>
+
           </div>
         )}
 
         {/* Start screen */}
         {!running && !gameOver && !showSettings && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
-            <h1 className="text-4xl font-black tracking-tight mb-1 text-center">Color Switch Rush</h1>
-            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-4">Match · Thread · Combo</p>
+            <h1 className="text-4xl font-black tracking-tight mb-1 text-center">{t.title}</h1>
+            <p className="text-white/50 text-xs uppercase tracking-[0.3em] mb-4">{t.tagline}</p>
 
             {streak > 0 && (
               <div className="mb-4 px-3 py-1.5 rounded-full bg-orange-500/15 border border-orange-400/40 flex items-center gap-1.5 text-xs font-bold text-orange-200">
                 <span>🔥</span>
-                <span>{streak}-day streak</span>
-                <span className="text-orange-200/60 font-medium">· keep it alive</span>
+                <span>{t.streakDays(streak)}</span>
+                <span className="text-orange-200/60 font-medium">· {t.streakKeep}</span>
               </div>
             )}
 
@@ -1078,11 +1091,11 @@ function Game() {
             <div className="mb-4 w-full max-w-[260px] space-y-1.5 text-sm">
               <div className="flex items-center gap-3 text-white/80">
                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-xs font-bold">👆</span>
-                <span><b>Tap / Click / Space</b> — cycle color</span>
+                <span><b>Tap / Click / Space</b> — {t.cycleColor}</span>
               </div>
               <div className="flex items-center gap-3 text-white/80">
                 <span className="inline-flex items-center justify-center w-8 h-8 rounded-md bg-white/10 text-[10px] font-bold">P</span>
-                <span>Pause / resume anytime</span>
+                <span>{t.pauseResumeAnytime}</span>
               </div>
             </div>
 
@@ -1091,47 +1104,58 @@ function Game() {
                 onClick={() => reset("classic")}
                 className="px-8 py-3.5 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform shadow-[0_0_30px_rgba(255,255,255,0.3)]"
               >
-                ▶ Play Endless
+                {t.playEndless}
               </button>
               <button
                 onClick={() => reset("daily")}
                 className="px-8 py-3 rounded-full bg-gradient-to-r from-yellow-300 to-pink-500 text-black font-black text-sm uppercase tracking-widest hover:scale-105 transition-transform"
               >
-                ★ Daily Challenge
+                {t.playDaily}
               </button>
               <button
                 onClick={() => reset("practice")}
                 className="px-8 py-2.5 rounded-full border border-cyan-300/50 text-cyan-100 font-bold text-xs uppercase tracking-widest hover:bg-cyan-300/10 transition"
               >
-                ◐ Practice (slow warm-up)
+                {t.playPractice}
               </button>
             </div>
 
             <div className="text-[10px] text-white/40 uppercase tracking-widest text-center mb-3">
-              <div>Endless best: {best} · x{bestCombo}</div>
-              <div>Today's best: {dailyBest} <span className="opacity-60">({todayKey()})</span></div>
+              <div>{t.modeEndless} {t.best}: {best} · x{bestCombo}</div>
+              <div>{t.todaysBest}: {dailyBest} <span className="opacity-60">({todayKey()})</span></div>
             </div>
 
-            <button
-              onClick={() => setShowSettings(true)}
-              className="text-white/60 hover:text-white text-xs uppercase tracking-widest"
-            >
-              ⚙ Settings
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowSettings(true)}
+                className="text-white/60 hover:text-white text-xs uppercase tracking-widest"
+              >
+                ⚙ {t.settings}
+              </button>
+              <span className="text-white/20">·</span>
+              <button
+                onClick={() => setShowDebug(true)}
+                className="text-white/40 hover:text-white text-[10px] uppercase tracking-widest"
+              >
+                🔧 {t.debugPanel}
+              </button>
+            </div>
           </div>
+
         )}
 
         {/* Settings */}
         {showSettings && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-30 animate-fade-in px-6">
-            <h2 className="text-2xl font-black tracking-tight mb-6">Settings</h2>
+            <h2 className="text-2xl font-black tracking-tight mb-6">{t.settings}</h2>
             <div className="w-full max-w-[280px] space-y-3 mb-6">
               {([
-                { key: "sound", label: "Sound", desc: "Beeps & feedback tones" },
-                { key: "shake", label: "Screen shake", desc: "Rumble on near-miss & crash" },
-                { key: "reducedMotion", label: "Reduced motion", desc: "Limit shake, flashes & glow" },
-                { key: "colorblind", label: "Colorblind mode", desc: "Distinct hues + shape symbols" },
+                { key: "sound", label: t.sound, desc: t.soundDesc },
+                { key: "shake", label: t.shake, desc: t.shakeDesc },
+                { key: "reducedMotion", label: t.reducedMotion, desc: t.reducedMotionDesc },
+                { key: "colorblind", label: t.colorblind, desc: t.colorblindDesc },
               ] as const).map((row) => {
+
                 const on = settings[row.key];
                 return (
                   <button
@@ -1158,8 +1182,9 @@ function Game() {
               onClick={() => setShowSettings(false)}
               className="px-8 py-3 rounded-full bg-white text-black font-bold text-sm uppercase tracking-widest hover:scale-105 transition-transform"
             >
-              Done
+              {t.done}
             </button>
+
           </div>
         )}
 
@@ -1168,49 +1193,50 @@ function Game() {
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
             <div className="text-xs uppercase tracking-widest text-white/50 mb-1">
               {mode === "daily"
-                ? `Daily · ${todayKey()}`
+                ? `${t.modeDaily} · ${todayKey()}`
                 : mode === "practice"
-                  ? "Practice Run"
-                  : "Endless · Game Over"}
+                  ? t.practiceRun
+                  : `${t.modeEndless} · ${t.gameOver}`}
             </div>
             <div className="text-6xl font-black tabular-nums mb-1">{score}</div>
-            <div className="text-white/60 mb-1">Peak combo x{peakCombo}</div>
+            <div className="text-white/60 mb-1">{t.peakCombo} x{peakCombo}</div>
             {mode !== "practice" && (
-              <div className="text-white/40 text-xs mb-3">Reached level {level}</div>
+              <div className="text-white/40 text-xs mb-3">{t.reachedLevel} {level}</div>
             )}
             {mode === "practice" && (
-              <div className="text-cyan-300/70 text-xs mb-3">Warm-up complete · scores not saved</div>
+              <div className="text-cyan-300/70 text-xs mb-3">{t.practiceComplete}</div>
             )}
+
 
             {mode === "daily" && streak > 0 && (
               <div className="mb-3 px-3 py-1 rounded-full bg-orange-500/15 border border-orange-400/40 text-xs font-bold text-orange-200 flex items-center gap-1.5">
                 <span>🔥</span>
-                <span>{streak}-day streak</span>
+                <span>{t.streakDays(streak)}</span>
               </div>
             )}
 
             {mode !== "practice" && (newBest ? (
               <div className="text-yellow-300 text-sm font-black uppercase tracking-widest mb-3 animate-pulse">
-                ★ {mode === "daily" ? "New daily best" : "New best score"} ★
+                ★ {mode === "daily" ? t.newDailyBest : t.newBest} ★
               </div>
             ) : (
               <div className="text-white/50 text-xs mb-3">
-                {mode === "daily" ? `Today's best ${dailyBest}` : `Best ${best}`} · x{bestCombo} combo
+                {mode === "daily" ? `${t.todaysBest} ${dailyBest}` : `${t.best} ${best}`} · x{bestCombo} {t.combo}
               </div>
             ))}
 
             {/* Run summary */}
             <div className="w-full max-w-[300px] mb-4 grid grid-cols-3 gap-2">
               <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
-                <div className="text-[9px] uppercase tracking-widest text-white/50">Best combo</div>
+                <div className="text-[9px] uppercase tracking-widest text-white/50">{t.bestPass}</div>
                 <div className="text-lg font-black tabular-nums">x{peakCombo}</div>
               </div>
               <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
-                <div className="text-[9px] uppercase tracking-widest text-white/50">Perfect chain</div>
+                <div className="text-[9px] uppercase tracking-widest text-white/50">{t.perfectChain}</div>
                 <div className="text-lg font-black tabular-nums">{longestChain}</div>
               </div>
               <div className="rounded-lg bg-white/5 border border-white/10 px-2 py-2 text-center">
-                <div className="text-[9px] uppercase tracking-widest text-white/50">Pass / Miss</div>
+                <div className="text-[9px] uppercase tracking-widest text-white/50">{t.passMiss}</div>
                 <div className="text-lg font-black tabular-nums">
                   <span className="text-emerald-300">{passes}</span>
                   <span className="text-white/30">/</span>
@@ -1222,7 +1248,7 @@ function Game() {
             {earnedBadges.length > 0 && (
               <div className="w-full max-w-[300px] mb-4">
                 <div className="text-[10px] uppercase tracking-widest text-white/50 mb-2 text-center">
-                  Combo Badges Earned
+                  {t.badgesEarned}
                 </div>
                 <div className="flex flex-wrap gap-2 justify-center">
                   {earnedBadges.map((b) => (
@@ -1238,7 +1264,7 @@ function Game() {
                 </div>
                 {nextBadge && (
                   <div className="text-[10px] text-white/40 text-center mt-2">
-                    Next: x{nextBadge.combo} {nextBadge.label} — {nextBadge.combo - peakCombo} to go
+                    {t.nextBadge(nextBadge.combo, nextBadge.label, nextBadge.combo - peakCombo)}
                   </div>
                 )}
               </div>
@@ -1246,7 +1272,7 @@ function Game() {
 
             {earnedBadges.length === 0 && nextBadge && (
               <div className="text-[10px] text-white/40 mb-4">
-                Chain x{nextBadge.combo} for your first badge
+                {t.firstBadgeHint(nextBadge.combo)}
               </div>
             )}
 
@@ -1255,19 +1281,19 @@ function Game() {
                 onClick={() => reset(mode)}
                 className="px-6 py-3 rounded-full bg-white text-black font-bold text-sm uppercase tracking-widest hover:scale-105 transition-transform"
               >
-                Play again
+                {t.playAgain}
               </button>
               <button
                 onClick={() => { setGameOver(false); setRunning(false); stateRef.current.running = false; stateRef.current.over = false; }}
                 className="px-4 py-3 rounded-full border border-white/20 text-white/70 font-bold text-sm uppercase tracking-widest hover:bg-white/10 transition"
               >
-                Menu
+                {t.menu}
               </button>
               <button
                 onClick={shareScore}
                 className="px-6 py-3 rounded-full border border-white/40 text-white font-bold text-sm uppercase tracking-widest hover:bg-white/10 transition"
               >
-                Share
+                {t.share}
               </button>
               <button
                 onClick={() => setShowSettings(true)}
@@ -1278,6 +1304,21 @@ function Game() {
             </div>
           </div>
         )}
+
+        <PlayablesDebugPanel
+          open={showDebug}
+          onClose={() => setShowDebug(false)}
+          labels={{
+            title: t.debugPanel,
+            run: t.runTests,
+            running: t.running,
+            close: t.close,
+            pass: t.passed,
+            fail: t.failed,
+            skip: t.skipped,
+          }}
+        />
+
       </div>
     </div>
   );
