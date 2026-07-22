@@ -197,6 +197,10 @@ function Game() {
   const [misses, setMisses] = useState(0);
   const [longestChain, setLongestChain] = useState(0);
   const [streak, setStreak] = useState(0);
+  const [lang, setLang] = useState<Lang>("en");
+  const [showDebug, setShowDebug] = useState(false);
+  const t: Dict = getDict(lang);
+
 
   const settingsRef = useRef(settings);
   settingsRef.current = settings;
