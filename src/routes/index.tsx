@@ -978,7 +978,7 @@ function Game() {
         {running && !gameOver && (
           <button
             onClick={(e) => { e.stopPropagation(); togglePause(); }}
-            aria-label={paused ? "Resume" : "Pause"}
+            aria-label={paused ? t.resume : t.paused}
             className="absolute top-3 left-1/2 -translate-x-1/2 z-20 w-9 h-9 rounded-full bg-white/10 hover:bg-white/20 backdrop-blur border border-white/20 flex items-center justify-center text-white text-sm"
           >
             {paused ? "▶" : "❚❚"}
