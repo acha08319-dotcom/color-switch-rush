@@ -93,6 +93,10 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       },
       { rel: "icon", href: "/favicon.ico", type: "image/x-icon" },
     ],
+    scripts: [
+      // YouTube Playables SDK — MUST load before any game code.
+      { src: "https://www.youtube.com/game_api/v1" },
+    ],
   }),
   shellComponent: RootShell,
   component: RootComponent,

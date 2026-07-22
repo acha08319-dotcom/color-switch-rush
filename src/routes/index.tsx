@@ -271,6 +271,139 @@ function Game() {
     setSettings(loadSettings());
   }, [loadBests]);
 
+  // YouTube Playables SDK integration.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const yt = window.ytgame;
+    if (!yt) return;
+
+    // Signal first frame + interactivity as required by the SDK.
+    try { yt.game.firstFrameReady(); } catch {}
+    const readyTimer = window.setTimeout(() => {
+      try { yt.game.gameReady(); } catch {}
+    }, 0);
+
+    // Mirror YouTube's audio setting into our sound toggle.
+    try {
+      const enabled = yt.system.isAudioEnabled();
+      setSettings((prev) => {
+        if (prev.sound === enabled) return prev;
+        const next = { ...prev, sound: enabled };
+        try { localStorage.setItem("csr_settings", JSON.stringify(next)); } catch {}
+        return next;
+      });
+    } catch {}
+    const offAudio = yt.system.onAudioEnabledChange((enabled) => {
+      setSettings((prev) => {
+        if (prev.sound === enabled) return prev;
+        const next = { ...prev, sound: enabled };
+        try { localStorage.setItem("csr_settings", JSON.stringify(next)); } catch {}
+        return next;
+      });
+    });
+
+    // Auto-pause / resume on YouTube system events.
+    const offPause = yt.system.onPause(() => {
+      const s = stateRef.current;
+      if (s.running && !s.over) setPaused(true);
+    });
+    const offResume = yt.system.onResume(() => {
+      setPaused(false);
+    });
+
+    // Hydrate best scores + settings from cloud save when available.
+    if (yt.IN_PLAYABLES_ENV) {
+      yt.game.loadData()
+        .then((raw) => {
+          if (!raw) return;
+          const data = JSON.parse(raw) as Partial<{
+            best: number;
+            bestCombo: number;
+            dailyBest: Record<string, number>;
+            streak: number;
+            streakLast: string;
+            settings: Partial<Settings>;
+          }>;
+          try {
+            if (typeof data.best === "number") {
+              const prev = Number(localStorage.getItem("csr_best") || "0");
+              if (data.best > prev) localStorage.setItem("csr_best", String(data.best));
+            }
+            if (typeof data.bestCombo === "number") {
+              const prev = Number(localStorage.getItem("csr_bestCombo") || "0");
+              if (data.bestCombo > prev) localStorage.setItem("csr_bestCombo", String(data.bestCombo));
+            }
+            if (data.dailyBest) {
+              for (const [k, v] of Object.entries(data.dailyBest)) {
+                const key = `csr_daily_${k}`;
+                const prev = Number(localStorage.getItem(key) || "0");
+                if (v > prev) localStorage.setItem(key, String(v));
+              }
+            }
+            if (typeof data.streak === "number") {
+              localStorage.setItem("csr_daily_streak", String(data.streak));
+            }
+            if (typeof data.streakLast === "string") {
+              localStorage.setItem("csr_daily_last", data.streakLast);
+            }
+            if (data.settings) {
+              setSettings((prev) => ({ ...prev, ...data.settings! }));
+            }
+          } catch {}
+          loadBests();
+        })
+        .catch(() => {});
+    }
+
+    return () => {
+      window.clearTimeout(readyTimer);
+      try { offAudio?.(); } catch {}
+      try { offPause?.(); } catch {}
+      try { offResume?.(); } catch {}
+    };
+  }, [loadBests]);
+
+  // Persist bests + settings to YouTube cloud save when values change.
+  useEffect(() => {
+    const yt = typeof window !== "undefined" ? window.ytgame : undefined;
+    if (!yt || !yt.IN_PLAYABLES_ENV) return;
+    try {
+      const dailyBest: Record<string, number> = {};
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && k.startsWith("csr_daily_") && !k.startsWith("csr_daily_streak") && !k.startsWith("csr_daily_last")) {
+          dailyBest[k.slice("csr_daily_".length)] = Number(localStorage.getItem(k) || "0");
+        }
+      }
+      const payload = JSON.stringify({
+        best,
+        bestCombo,
+        dailyBest,
+        streak,
+        streakLast: localStorage.getItem("csr_daily_last") || "",
+        settings,
+      });
+      yt.game.saveData(payload).catch(() => {
+        try { yt.health.logWarning(); } catch {}
+      });
+    } catch {
+      try { yt.health.logError(); } catch {}
+    }
+  }, [best, bestCombo, dailyBest, streak, settings]);
+
+  // Report score to YouTube on game over (endless mode is the canonical score).
+  useEffect(() => {
+    if (!gameOver) return;
+    const yt = typeof window !== "undefined" ? window.ytgame : undefined;
+    if (!yt) return;
+    if (modeRef.current !== "classic") return;
+    try {
+      yt.engagement.sendScore({ value: Math.max(0, Math.floor(score)) }).catch(() => {});
+    } catch {}
+  }, [gameOver, score]);
+
+
+
   const updateSetting = useCallback((patch: Partial<Settings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
