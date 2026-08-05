@@ -1200,7 +1200,7 @@ function Game() {
 
         {/* Settings */}
         {showSettings && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-30 animate-fade-in px-6">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-30 animate-fade-in px-6 overflow-y-auto py-6">
             <h2 className="text-2xl font-black tracking-tight mb-6">{t.settings}</h2>
 
             <div className="w-full max-w-[280px] mb-3 px-4 py-3 rounded-xl bg-white/5">
