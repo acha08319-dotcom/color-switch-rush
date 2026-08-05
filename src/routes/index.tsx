@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { detectLanguage, getDict, type Dict, type Lang } from "../lib/i18n";
-import { PlayablesDebugPanel } from "../components/PlayablesDebugPanel";
+import { detectLanguage, getDict, formatDate, LANGS, LANG_NAMES, type Dict, type Lang } from "../lib/i18n";
+import { PlayablesDebugPanel, runSelfCheck, type SelfCheckResult } from "../components/PlayablesDebugPanel";
+
 
 
 export const Route = createFileRoute("/")({
@@ -153,9 +154,11 @@ type Settings = {
   shake: boolean;
   colorblind: boolean;
   reducedMotion: boolean;
+  langOverride: "auto" | Lang;
 };
 
-const DEFAULT_SETTINGS: Settings = { sound: true, shake: true, colorblind: false, reducedMotion: false };
+const DEFAULT_SETTINGS: Settings = { sound: true, shake: true, colorblind: false, reducedMotion: false, langOverride: "auto" };
+
 
 function loadSettings(): Settings {
   try {
