@@ -66,7 +66,17 @@ export type Dict = {
   failed: string;
   skipped: string;
   matchThreadCombo: string;
+  copyReport: string;
+  copied: string;
+  downloadReport: string;
+  selfCheckOk: (pass: number, total: number) => string;
+  selfCheckFail: (fail: number) => string;
+  selfCheckRunning: string;
+  language: string;
+  languageDesc: string;
+  languageAuto: string;
 };
+
 
 const en: Dict = {
   title: "Color Switch Rush",
