@@ -200,9 +200,13 @@ function Game() {
   const [misses, setMisses] = useState(0);
   const [longestChain, setLongestChain] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [lang, setLang] = useState<Lang>("en");
+  const [detectedLang, setDetectedLang] = useState<Lang>("en");
   const [showDebug, setShowDebug] = useState(false);
+  const [selfCheck, setSelfCheck] = useState<SelfCheckResult | null>(null);
+  const [selfCheckRunning, setSelfCheckRunning] = useState(true);
+  const lang: Lang = settings.langOverride === "auto" ? detectedLang : settings.langOverride;
   const t: Dict = getDict(lang);
+
 
 
   const settingsRef = useRef(settings);
