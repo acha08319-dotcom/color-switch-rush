@@ -1,7 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
-import { detectLanguage, getDict, type Dict, type Lang } from "../lib/i18n";
-import { PlayablesDebugPanel } from "../components/PlayablesDebugPanel";
+import { detectLanguage, getDict, formatDate, LANGS, LANG_NAMES, type Dict, type Lang } from "../lib/i18n";
+import { PlayablesDebugPanel, runSelfCheck, type SelfCheckResult } from "../components/PlayablesDebugPanel";
+
 
 
 export const Route = createFileRoute("/")({
@@ -153,9 +154,11 @@ type Settings = {
   shake: boolean;
   colorblind: boolean;
   reducedMotion: boolean;
+  langOverride: "auto" | Lang;
 };
 
-const DEFAULT_SETTINGS: Settings = { sound: true, shake: true, colorblind: false, reducedMotion: false };
+const DEFAULT_SETTINGS: Settings = { sound: true, shake: true, colorblind: false, reducedMotion: false, langOverride: "auto" };
+
 
 function loadSettings(): Settings {
   try {
@@ -197,9 +200,13 @@ function Game() {
   const [misses, setMisses] = useState(0);
   const [longestChain, setLongestChain] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [lang, setLang] = useState<Lang>("en");
+  const [detectedLang, setDetectedLang] = useState<Lang>("en");
   const [showDebug, setShowDebug] = useState(false);
+  const [selfCheck, setSelfCheck] = useState<SelfCheckResult | null>(null);
+  const [selfCheckRunning, setSelfCheckRunning] = useState(true);
+  const lang: Lang = settings.langOverride === "auto" ? detectedLang : settings.langOverride;
   const t: Dict = getDict(lang);
+
 
 
   const settingsRef = useRef(settings);
@@ -276,8 +283,34 @@ function Game() {
   useEffect(() => {
     loadBests();
     setSettings(loadSettings());
-    detectLanguage().then((l) => setLang(l)).catch(() => {});
+    detectLanguage().then((l) => setDetectedLang(l)).catch(() => {});
   }, [loadBests]);
+
+  // Auto-run the Playables integration self-check once on load.
+  useEffect(() => {
+    let cancelled = false;
+    setSelfCheckRunning(true);
+    // Defer slightly so the SDK script has a chance to attach window.ytgame.
+    const timer = window.setTimeout(() => {
+      runSelfCheck()
+        .then((r) => {
+          if (cancelled) return;
+          setSelfCheck(r);
+          if (r.summary.fail > 0) {
+            try { window.ytgame?.health.logWarning(); } catch {}
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setSelfCheckRunning(false);
+        });
+    }, 600);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+
 
 
   // YouTube Playables SDK integration.
@@ -851,7 +884,8 @@ function Game() {
     g.font = "600 22px system-ui, sans-serif";
     g.fillStyle = mode === "daily" ? "#facc15" : "rgba(255,255,255,0.65)";
     const modeLine = mode === "daily"
-      ? `DAILY CHALLENGE · ${todayKey()}`
+      ? `${t.modeDaily.toUpperCase()} · ${formatDate(todayKey(), lang, { year: "numeric", month: "long", day: "numeric" })}`
+
       : mode === "practice"
         ? "PRACTICE MODE"
         : "ENDLESS MODE";
@@ -915,8 +949,9 @@ function Game() {
     const dataUrl = generateShareImage();
     const badgeText = topBadge ? ` · ${topBadge.emoji} ${topBadge.label}` : "";
     const modeText = mode === "daily"
-      ? ` (Daily ${todayKey()})`
+      ? ` (${t.modeDaily} ${formatDate(todayKey(), lang)})`
       : mode === "practice"
+
         ? " (Practice)"
         : " (Endless)";
     try {
@@ -1122,8 +1157,26 @@ function Game() {
 
             <div className="text-[10px] text-white/40 uppercase tracking-widest text-center mb-3">
               <div>{t.modeEndless} {t.best}: {best} · x{bestCombo}</div>
-              <div>{t.todaysBest}: {dailyBest} <span className="opacity-60">({todayKey()})</span></div>
+              <div>{t.todaysBest}: {dailyBest} <span className="opacity-60">({formatDate(todayKey(), lang)})</span></div>
             </div>
+
+            {/* Auto self-check status */}
+            <button
+              onClick={() => setShowDebug(true)}
+              className={`mb-3 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-widest transition ${
+                selfCheckRunning || !selfCheck
+                  ? "border-white/20 text-white/50 hover:bg-white/5"
+                  : selfCheck.summary.fail > 0
+                    ? "border-rose-400/50 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
+                    : "border-emerald-400/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+              }`}
+            >
+              {selfCheckRunning || !selfCheck
+                ? `⏳ ${t.selfCheckRunning}`
+                : selfCheck.summary.fail > 0
+                  ? `✕ ${t.selfCheckFail(selfCheck.summary.fail)}`
+                  : `✓ ${t.selfCheckOk(selfCheck.summary.pass, selfCheck.summary.total)}`}
+            </button>
 
             <div className="flex items-center gap-3">
               <button
@@ -1140,15 +1193,33 @@ function Game() {
                 🔧 {t.debugPanel}
               </button>
             </div>
+
           </div>
 
         )}
 
         {/* Settings */}
         {showSettings && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-30 animate-fade-in px-6">
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-30 animate-fade-in px-6 overflow-y-auto py-6">
             <h2 className="text-2xl font-black tracking-tight mb-6">{t.settings}</h2>
+
+            <div className="w-full max-w-[280px] mb-3 px-4 py-3 rounded-xl bg-white/5">
+              <div className="text-sm font-bold">{t.language}</div>
+              <div className="text-xs text-white/50 mb-2">{t.languageDesc}</div>
+              <select
+                value={settings.langOverride}
+                onChange={(e) => updateSetting({ langOverride: e.target.value as Settings["langOverride"] })}
+                className="w-full rounded-lg bg-black/60 border border-white/20 px-3 py-2 text-sm text-white outline-none focus:border-yellow-300/70"
+              >
+                <option value="auto">{t.languageAuto} ({LANG_NAMES[detectedLang]})</option>
+                {LANGS.map((l) => (
+                  <option key={l} value={l}>{LANG_NAMES[l]}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="w-full max-w-[280px] space-y-3 mb-6">
+
               {([
                 { key: "sound", label: t.sound, desc: t.soundDesc },
                 { key: "shake", label: t.shake, desc: t.shakeDesc },
@@ -1193,7 +1264,8 @@ function Game() {
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
             <div className="text-xs uppercase tracking-widest text-white/50 mb-1">
               {mode === "daily"
-                ? `${t.modeDaily} · ${todayKey()}`
+                ? `${t.modeDaily} · ${formatDate(todayKey(), lang)}`
+
                 : mode === "practice"
                   ? t.practiceRun
                   : `${t.modeEndless} · ${t.gameOver}`}
@@ -1308,6 +1380,8 @@ function Game() {
         <PlayablesDebugPanel
           open={showDebug}
           onClose={() => setShowDebug(false)}
+          result={selfCheck}
+          onResult={(r) => setSelfCheck(r)}
           labels={{
             title: t.debugPanel,
             run: t.runTests,
@@ -1316,8 +1390,12 @@ function Game() {
             pass: t.passed,
             fail: t.failed,
             skip: t.skipped,
+            copyReport: t.copyReport,
+            copied: t.copied,
+            downloadReport: t.downloadReport,
           }}
         />
+
 
       </div>
     </div>

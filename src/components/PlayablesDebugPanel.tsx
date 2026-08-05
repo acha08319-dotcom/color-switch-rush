@@ -1,7 +1,20 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-type Status = "pending" | "pass" | "fail" | "skip";
-type Test = { name: string; status: Status; message?: string };
+export type Status = "pending" | "pass" | "fail" | "skip";
+export type Test = { name: string; status: Status; message?: string };
+export type LogEntry = { t: number; level: "info" | "warn" | "error"; msg: string };
+export type SelfCheckResult = {
+  startedAt: string;
+  finishedAt: string;
+  durationMs: number;
+  sdkVersion: string | null;
+  inPlayablesEnv: boolean;
+  userAgent: string;
+  language: string | null;
+  summary: { total: number; pass: number; fail: number; skip: number };
+  tests: Test[];
+  logs: LogEntry[];
+};
 
 const TEST_KEY = "__csr_selfcheck__";
 
@@ -14,18 +27,73 @@ async function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
-async function runSuite(setTests: (updater: (prev: Test[]) => Test[]) => void) {
+export const INITIAL_TESTS: Test[] = [
+  { name: "SDK loaded", status: "pending" },
+  { name: "In Playables env", status: "pending" },
+  { name: "firstFrameReady + gameReady", status: "pending" },
+  { name: "Audio state", status: "pending" },
+  { name: "getLanguage", status: "pending" },
+  { name: "Pause/Resume hooks", status: "pending" },
+  { name: "onAudioEnabledChange", status: "pending" },
+  { name: "Cloud save round-trip", status: "pending" },
+  { name: "engagement.sendScore", status: "pending" },
+  { name: "Ads API surface", status: "pending" },
+  { name: "Health logging", status: "pending" },
+];
+
+/**
+ * Runs the full Playables integration self-check.
+ * Safe to call headlessly (e.g. automatically on game load).
+ */
+export async function runSelfCheck(
+  onProgress?: (tests: Test[]) => void,
+): Promise<SelfCheckResult> {
+  const started = Date.now();
+  const startedAt = new Date(started).toISOString();
+  const tests: Test[] = INITIAL_TESTS.map((t) => ({ ...t }));
+  const logs: LogEntry[] = [];
+  let detectedLanguage: string | null = null;
+
+  const log = (level: LogEntry["level"], msg: string) => {
+    logs.push({ t: Date.now() - started, level, msg });
+  };
+  const update = (name: string, status: Status, message?: string) => {
+    const idx = tests.findIndex((t) => t.name === name);
+    if (idx >= 0) tests[idx] = { ...tests[idx], status, message };
+    log(status === "fail" ? "error" : status === "skip" ? "warn" : "info", `${name}: ${status}${message ? ` — ${message}` : ""}`);
+    onProgress?.(tests.map((t) => ({ ...t })));
+  };
+
   const yt = typeof window !== "undefined" ? window.ytgame : undefined;
 
-  const update = (name: string, status: Status, message?: string) =>
-    setTests((prev) =>
-      prev.map((t) => (t.name === name ? { ...t, status, message } : t)),
-    );
+  const finish = (): SelfCheckResult => {
+    const finished = Date.now();
+    return {
+      startedAt,
+      finishedAt: new Date(finished).toISOString(),
+      durationMs: finished - started,
+      sdkVersion: yt?.SDK_VERSION ?? null,
+      inPlayablesEnv: Boolean(yt?.IN_PLAYABLES_ENV),
+      userAgent: typeof navigator !== "undefined" ? navigator.userAgent : "unknown",
+      language: detectedLanguage,
+      summary: {
+        total: tests.length,
+        pass: tests.filter((t) => t.status === "pass").length,
+        fail: tests.filter((t) => t.status === "fail").length,
+        skip: tests.filter((t) => t.status === "skip").length,
+      },
+      tests: tests.map((t) => ({ ...t })),
+      logs,
+    };
+  };
 
   // 1. SDK global present
   if (!yt) {
     update("SDK loaded", "fail", "window.ytgame is undefined — script did not load");
-    return;
+    for (const t of tests) {
+      if (t.status === "pending") update(t.name, "skip", "SDK unavailable");
+    }
+    return finish();
   }
   update("SDK loaded", "pass", `v${yt.SDK_VERSION ?? "unknown"}`);
 
@@ -56,6 +124,7 @@ async function runSuite(setTests: (updater: (prev: Test[]) => Test[]) => void) {
   // 5. Language
   try {
     const lang = await withTimeout(yt.system.getLanguage(), 3000, "getLanguage");
+    detectedLanguage = lang;
     update("getLanguage", "pass", `Locale: ${lang}`);
   } catch (e: any) {
     update("getLanguage", "fail", e?.message ?? String(e));
@@ -137,21 +206,9 @@ async function runSuite(setTests: (updater: (prev: Test[]) => Test[]) => void) {
   } catch (e: any) {
     update("Health logging", "fail", e?.message ?? String(e));
   }
-}
 
-const INITIAL_TESTS: Test[] = [
-  { name: "SDK loaded", status: "pending" },
-  { name: "In Playables env", status: "pending" },
-  { name: "firstFrameReady + gameReady", status: "pending" },
-  { name: "Audio state", status: "pending" },
-  { name: "getLanguage", status: "pending" },
-  { name: "Pause/Resume hooks", status: "pending" },
-  { name: "onAudioEnabledChange", status: "pending" },
-  { name: "Cloud save round-trip", status: "pending" },
-  { name: "engagement.sendScore", status: "pending" },
-  { name: "Ads API surface", status: "pending" },
-  { name: "Health logging", status: "pending" },
-];
+  return finish();
+}
 
 const STATUS_STYLE: Record<Status, string> = {
   pending: "bg-white/10 text-white/50",
@@ -160,35 +217,90 @@ const STATUS_STYLE: Record<Status, string> = {
   skip: "bg-amber-500/20 text-amber-200 border-amber-400/40",
 };
 
+export type DebugLabels = {
+  title: string;
+  run: string;
+  running: string;
+  close: string;
+  pass: string;
+  fail: string;
+  skip: string;
+  copyReport: string;
+  copied: string;
+  downloadReport: string;
+};
+
 export function PlayablesDebugPanel({
   open,
   onClose,
   labels,
+  result,
+  onResult,
 }: {
   open: boolean;
   onClose: () => void;
-  labels: {
-    title: string;
-    run: string;
-    running: string;
-    close: string;
-    pass: string;
-    fail: string;
-    skip: string;
-  };
+  labels: DebugLabels;
+  result?: SelfCheckResult | null;
+  onResult?: (r: SelfCheckResult) => void;
 }) {
-  const [tests, setTests] = useState<Test[]>(INITIAL_TESTS);
+  const [tests, setTests] = useState<Test[]>(result?.tests ?? INITIAL_TESTS);
+  const [report, setReport] = useState<SelfCheckResult | null>(result ?? null);
   const [isRunning, setIsRunning] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Adopt an externally provided (auto-run) result when it arrives.
+  useEffect(() => {
+    if (result && !isRunning) {
+      setReport(result);
+      setTests(result.tests);
+    }
+  }, [result, isRunning]);
 
   const run = useCallback(async () => {
     setTests(INITIAL_TESTS.map((t) => ({ ...t, status: "pending", message: undefined })));
     setIsRunning(true);
+    setCopied(false);
     try {
-      await runSuite(setTests);
+      const r = await runSelfCheck(setTests);
+      setReport(r);
+      setTests(r.tests);
+      onResult?.(r);
     } finally {
       setIsRunning(false);
     }
-  }, []);
+  }, [onResult]);
+
+  const reportJson = useCallback(() => JSON.stringify(report, null, 2), [report]);
+
+  const copyReport = useCallback(async () => {
+    if (!report) return;
+    const text = reportJson();
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch {}
+      document.body.removeChild(ta);
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1600);
+  }, [report, reportJson]);
+
+  const downloadReport = useCallback(() => {
+    if (!report) return;
+    const blob = new Blob([reportJson()], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `playables-selfcheck-${report.startedAt.replace(/[:.]/g, "-")}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [report, reportJson]);
 
   if (!open) return null;
 
@@ -255,7 +367,24 @@ export function PlayablesDebugPanel({
         ))}
       </div>
 
-      <div className="p-4 flex gap-2 border-t border-white/10">
+      <div className="px-4 pb-2 flex gap-2">
+        <button
+          onClick={copyReport}
+          disabled={!report || isRunning}
+          className="flex-1 px-3 py-2 rounded-full border border-white/20 text-white/80 font-bold text-[11px] uppercase tracking-widest hover:bg-white/10 transition disabled:opacity-40"
+        >
+          {copied ? `✓ ${labels.copied}` : `⧉ ${labels.copyReport}`}
+        </button>
+        <button
+          onClick={downloadReport}
+          disabled={!report || isRunning}
+          className="flex-1 px-3 py-2 rounded-full border border-white/20 text-white/80 font-bold text-[11px] uppercase tracking-widest hover:bg-white/10 transition disabled:opacity-40"
+        >
+          ⤓ {labels.downloadReport}
+        </button>
+      </div>
+
+      <div className="p-4 pt-2 flex gap-2 border-t border-white/10">
         <button
           onClick={run}
           disabled={isRunning}
