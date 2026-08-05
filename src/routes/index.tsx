@@ -1363,6 +1363,8 @@ function Game() {
         <PlayablesDebugPanel
           open={showDebug}
           onClose={() => setShowDebug(false)}
+          result={selfCheck}
+          onResult={(r) => setSelfCheck(r)}
           labels={{
             title: t.debugPanel,
             run: t.runTests,
@@ -1371,8 +1373,12 @@ function Game() {
             pass: t.passed,
             fail: t.failed,
             skip: t.skipped,
+            copyReport: t.copyReport,
+            copied: t.copied,
+            downloadReport: t.downloadReport,
           }}
         />
+
 
       </div>
     </div>
