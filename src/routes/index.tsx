@@ -1157,8 +1157,26 @@ function Game() {
 
             <div className="text-[10px] text-white/40 uppercase tracking-widest text-center mb-3">
               <div>{t.modeEndless} {t.best}: {best} · x{bestCombo}</div>
-              <div>{t.todaysBest}: {dailyBest} <span className="opacity-60">({todayKey()})</span></div>
+              <div>{t.todaysBest}: {dailyBest} <span className="opacity-60">({formatDate(todayKey(), lang)})</span></div>
             </div>
+
+            {/* Auto self-check status */}
+            <button
+              onClick={() => setShowDebug(true)}
+              className={`mb-3 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-widest transition ${
+                selfCheckRunning || !selfCheck
+                  ? "border-white/20 text-white/50 hover:bg-white/5"
+                  : selfCheck.summary.fail > 0
+                    ? "border-rose-400/50 bg-rose-500/15 text-rose-200 hover:bg-rose-500/25"
+                    : "border-emerald-400/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
+              }`}
+            >
+              {selfCheckRunning || !selfCheck
+                ? `⏳ ${t.selfCheckRunning}`
+                : selfCheck.summary.fail > 0
+                  ? `✕ ${t.selfCheckFail(selfCheck.summary.fail)}`
+                  : `✓ ${t.selfCheckOk(selfCheck.summary.pass, selfCheck.summary.total)}`}
+            </button>
 
             <div className="flex items-center gap-3">
               <button
@@ -1175,6 +1193,7 @@ function Game() {
                 🔧 {t.debugPanel}
               </button>
             </div>
+
           </div>
 
         )}
@@ -1228,7 +1247,8 @@ function Game() {
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/85 backdrop-blur-sm z-20 animate-fade-in px-6 overflow-y-auto py-6">
             <div className="text-xs uppercase tracking-widest text-white/50 mb-1">
               {mode === "daily"
-                ? `${t.modeDaily} · ${todayKey()}`
+                ? `${t.modeDaily} · ${formatDate(todayKey(), lang)}`
+
                 : mode === "practice"
                   ? t.practiceRun
                   : `${t.modeEndless} · ${t.gameOver}`}
