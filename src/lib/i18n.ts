@@ -140,7 +140,17 @@ const en: Dict = {
   failed: "FAIL",
   skipped: "SKIP",
   matchThreadCombo: "Match · Thread · Combo",
+  copyReport: "Copy JSON",
+  copied: "Copied",
+  downloadReport: "Download JSON",
+  selfCheckOk: (pass, total) => `Playables check ${pass}/${total} passed`,
+  selfCheckFail: (fail) => `Playables check — ${fail} failed`,
+  selfCheckRunning: "Running Playables check…",
+  language: "Language",
+  languageDesc: "Override the auto-detected locale",
+  languageAuto: "Automatic",
 };
+
 
 const es: Partial<Dict> = {
   tagline: "Iguala · Atraviesa · Combo",
