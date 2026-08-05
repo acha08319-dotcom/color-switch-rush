@@ -703,3 +703,50 @@ export async function detectLanguage(): Promise<Lang> {
     return "en";
   }
 }
+
+export const LANG_NAMES: Record<Lang, string> = {
+  en: "English",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+  pt: "Português",
+  ja: "日本語",
+  zh: "中文",
+  ko: "한국어",
+  it: "Italiano",
+  ru: "Русский",
+};
+
+export const LANGS = Object.keys(LANG_NAMES) as Lang[];
+
+/** BCP 47 tag used for Intl formatting for a given app language. */
+export function localeTag(lang: Lang): string {
+  return lang;
+}
+
+/**
+ * Formats a `YYYY-MM-DD` key using the player's locale rules.
+ * Falls back to the raw key if Intl is unavailable.
+ */
+export function formatDate(
+  key: string,
+  lang: Lang,
+  opts: Intl.DateTimeFormatOptions = { year: "numeric", month: "short", day: "numeric" },
+): string {
+  const [y, m, d] = key.split("-").map(Number);
+  if (!y || !m || !d) return key;
+  try {
+    return new Intl.DateTimeFormat(localeTag(lang), opts).format(new Date(y, m - 1, d));
+  } catch {
+    return key;
+  }
+}
+
+/** Formats a number using the player's locale rules. */
+export function formatNumber(n: number, lang: Lang): string {
+  try {
+    return new Intl.NumberFormat(localeTag(lang)).format(n);
+  } catch {
+    return String(n);
+  }
+}
