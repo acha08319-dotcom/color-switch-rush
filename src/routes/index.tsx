@@ -283,8 +283,34 @@ function Game() {
   useEffect(() => {
     loadBests();
     setSettings(loadSettings());
-    detectLanguage().then((l) => setLang(l)).catch(() => {});
+    detectLanguage().then((l) => setDetectedLang(l)).catch(() => {});
   }, [loadBests]);
+
+  // Auto-run the Playables integration self-check once on load.
+  useEffect(() => {
+    let cancelled = false;
+    setSelfCheckRunning(true);
+    // Defer slightly so the SDK script has a chance to attach window.ytgame.
+    const timer = window.setTimeout(() => {
+      runSelfCheck()
+        .then((r) => {
+          if (cancelled) return;
+          setSelfCheck(r);
+          if (r.summary.fail > 0) {
+            try { window.ytgame?.health.logWarning(); } catch {}
+          }
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) setSelfCheckRunning(false);
+        });
+    }, 600);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, []);
+
 
 
   // YouTube Playables SDK integration.
