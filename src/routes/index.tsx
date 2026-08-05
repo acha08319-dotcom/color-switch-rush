@@ -884,7 +884,8 @@ function Game() {
     g.font = "600 22px system-ui, sans-serif";
     g.fillStyle = mode === "daily" ? "#facc15" : "rgba(255,255,255,0.65)";
     const modeLine = mode === "daily"
-      ? `DAILY CHALLENGE · ${todayKey()}`
+      ? `${t.modeDaily.toUpperCase()} · ${formatDate(todayKey(), lang, { year: "numeric", month: "long", day: "numeric" })}`
+
       : mode === "practice"
         ? "PRACTICE MODE"
         : "ENDLESS MODE";
@@ -948,8 +949,9 @@ function Game() {
     const dataUrl = generateShareImage();
     const badgeText = topBadge ? ` · ${topBadge.emoji} ${topBadge.label}` : "";
     const modeText = mode === "daily"
-      ? ` (Daily ${todayKey()})`
+      ? ` (${t.modeDaily} ${formatDate(todayKey(), lang)})`
       : mode === "practice"
+
         ? " (Practice)"
         : " (Endless)";
     try {
