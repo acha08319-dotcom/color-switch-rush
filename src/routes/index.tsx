@@ -1202,7 +1202,24 @@ function Game() {
         {showSettings && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/90 backdrop-blur-sm z-30 animate-fade-in px-6">
             <h2 className="text-2xl font-black tracking-tight mb-6">{t.settings}</h2>
+
+            <div className="w-full max-w-[280px] mb-3 px-4 py-3 rounded-xl bg-white/5">
+              <div className="text-sm font-bold">{t.language}</div>
+              <div className="text-xs text-white/50 mb-2">{t.languageDesc}</div>
+              <select
+                value={settings.langOverride}
+                onChange={(e) => updateSetting({ langOverride: e.target.value as Settings["langOverride"] })}
+                className="w-full rounded-lg bg-black/60 border border-white/20 px-3 py-2 text-sm text-white outline-none focus:border-yellow-300/70"
+              >
+                <option value="auto">{t.languageAuto} ({LANG_NAMES[detectedLang]})</option>
+                {LANGS.map((l) => (
+                  <option key={l} value={l}>{LANG_NAMES[l]}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="w-full max-w-[280px] space-y-3 mb-6">
+
               {([
                 { key: "sound", label: t.sound, desc: t.soundDesc },
                 { key: "shake", label: t.shake, desc: t.shakeDesc },
