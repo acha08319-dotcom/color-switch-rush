@@ -3,7 +3,37 @@ import { useCallback, useEffect, useState } from "react";
 export type Status = "pending" | "pass" | "fail" | "skip";
 export type Test = { name: string; status: Status; message?: string };
 export type LogEntry = { t: number; level: "info" | "warn" | "error"; msg: string };
+export type SelfCheckMeta = {
+  detectedLocale?: string | null;
+  langOverride?: string;
+  effectiveLang?: string;
+  timeZone?: string | null;
+  dailyDateKey?: string;
+  dailyDateFormatted?: string;
+};
+
+export type ExportOptions = { includeLogs: boolean; includeEnvMeta: boolean };
+
+export const DEFAULT_EXPORT_OPTIONS: ExportOptions = { includeLogs: true, includeEnvMeta: true };
+
+const EXPORT_KEY = "csr_export_opts";
+
+export function loadExportOptions(): ExportOptions {
+  try {
+    const raw = localStorage.getItem(EXPORT_KEY);
+    if (!raw) return DEFAULT_EXPORT_OPTIONS;
+    return { ...DEFAULT_EXPORT_OPTIONS, ...JSON.parse(raw) };
+  } catch {
+    return DEFAULT_EXPORT_OPTIONS;
+  }
+}
+
+export function saveExportOptions(o: ExportOptions) {
+  try { localStorage.setItem(EXPORT_KEY, JSON.stringify(o)); } catch {}
+}
+
 export type SelfCheckResult = {
+  meta: SelfCheckMeta;
   startedAt: string;
   finishedAt: string;
   durationMs: number;
@@ -47,6 +77,7 @@ export const INITIAL_TESTS: Test[] = [
  */
 export async function runSelfCheck(
   onProgress?: (tests: Test[]) => void,
+  meta: SelfCheckMeta = {},
 ): Promise<SelfCheckResult> {
   const started = Date.now();
   const startedAt = new Date(started).toISOString();
@@ -68,7 +99,12 @@ export async function runSelfCheck(
 
   const finish = (): SelfCheckResult => {
     const finished = Date.now();
+    let timeZone: string | null = meta.timeZone ?? null;
+    if (!timeZone) {
+      try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? null; } catch { timeZone = null; }
+    }
     return {
+      meta: { ...meta, timeZone },
       startedAt,
       finishedAt: new Date(finished).toISOString(),
       durationMs: finished - started,
@@ -228,6 +264,10 @@ export type DebugLabels = {
   copyReport: string;
   copied: string;
   downloadReport: string;
+  exportOptions: string;
+  includeLogs: string;
+  includeEnvMeta: string;
+  rerun: string;
 };
 
 export function PlayablesDebugPanel({
@@ -236,17 +276,33 @@ export function PlayablesDebugPanel({
   labels,
   result,
   onResult,
+  meta,
 }: {
   open: boolean;
   onClose: () => void;
   labels: DebugLabels;
   result?: SelfCheckResult | null;
   onResult?: (r: SelfCheckResult) => void;
+  meta?: SelfCheckMeta;
 }) {
   const [tests, setTests] = useState<Test[]>(result?.tests ?? INITIAL_TESTS);
   const [report, setReport] = useState<SelfCheckResult | null>(result ?? null);
   const [isRunning, setIsRunning] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [exportOpts, setExportOpts] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
+
+  // Restore the last-used export options so they persist across sessions.
+  useEffect(() => {
+    setExportOpts(loadExportOptions());
+  }, []);
+
+  const patchExportOpts = useCallback((patch: Partial<ExportOptions>) => {
+    setExportOpts((prev) => {
+      const next = { ...prev, ...patch };
+      saveExportOptions(next);
+      return next;
+    });
+  }, []);
 
   // Adopt an externally provided (auto-run) result when it arrives.
   useEffect(() => {
@@ -261,16 +317,28 @@ export function PlayablesDebugPanel({
     setIsRunning(true);
     setCopied(false);
     try {
-      const r = await runSelfCheck(setTests);
+      const r = await runSelfCheck(setTests, meta);
       setReport(r);
       setTests(r.tests);
       onResult?.(r);
     } finally {
       setIsRunning(false);
     }
-  }, [onResult]);
+  }, [onResult, meta]);
 
-  const reportJson = useCallback(() => JSON.stringify(report, null, 2), [report]);
+  const reportJson = useCallback(() => {
+    if (!report) return "null";
+    const out: Record<string, unknown> = { ...report };
+    if (!exportOpts.includeLogs) delete out.logs;
+    if (!exportOpts.includeEnvMeta) {
+      delete out.meta;
+      delete out.userAgent;
+      delete out.sdkVersion;
+      delete out.inPlayablesEnv;
+      delete out.language;
+    }
+    return JSON.stringify(out, null, 2);
+  }, [report, exportOpts]);
 
   const copyReport = useCallback(async () => {
     if (!report) return;
@@ -367,6 +435,28 @@ export function PlayablesDebugPanel({
         ))}
       </div>
 
+      <div className="px-4 pb-2">
+        <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">{labels.exportOptions}</div>
+        <div className="flex flex-wrap gap-3 text-[11px] text-white/70">
+          <label className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={exportOpts.includeLogs}
+              onChange={(e) => patchExportOpts({ includeLogs: e.target.checked })}
+            />
+            {labels.includeLogs}
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input
+              type="checkbox"
+              checked={exportOpts.includeEnvMeta}
+              onChange={(e) => patchExportOpts({ includeEnvMeta: e.target.checked })}
+            />
+            {labels.includeEnvMeta}
+          </label>
+        </div>
+      </div>
+
       <div className="px-4 pb-2 flex gap-2">
         <button
           onClick={copyReport}
@@ -390,7 +480,7 @@ export function PlayablesDebugPanel({
           disabled={isRunning}
           className="flex-1 px-4 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest disabled:opacity-50 hover:scale-[1.02] transition-transform"
         >
-          {isRunning ? labels.running : done ? labels.run + " ↻" : labels.run}
+          {isRunning ? labels.running : done ? `↻ ${labels.rerun}` : labels.run}
         </button>
         <button
           onClick={onClose}

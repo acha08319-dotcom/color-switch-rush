@@ -75,6 +75,15 @@ export type Dict = {
   language: string;
   languageDesc: string;
   languageAuto: string;
+  rerunCheck: string;
+  showDetails: string;
+  hideDetails: string;
+  failingTests: string;
+  recentLogs: string;
+  exportOptions: string;
+  includeLogs: string;
+  includeEnvMeta: string;
+  openDebugPanel: string;
 };
 
 
@@ -149,6 +158,15 @@ const en: Dict = {
   language: "Language",
   languageDesc: "Override the auto-detected locale",
   languageAuto: "Automatic",
+  rerunCheck: "Re-run check",
+  showDetails: "Details",
+  hideDetails: "Hide details",
+  failingTests: "Failing tests",
+  recentLogs: "Logs",
+  exportOptions: "Export options",
+  includeLogs: "Include logs",
+  includeEnvMeta: "Include environment info",
+  openDebugPanel: "Open debug panel",
 };
 
 
