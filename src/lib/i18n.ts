@@ -158,6 +158,15 @@ const en: Dict = {
   language: "Language",
   languageDesc: "Override the auto-detected locale",
   languageAuto: "Automatic",
+  rerunCheck: "Re-run check",
+  showDetails: "Details",
+  hideDetails: "Hide details",
+  failingTests: "Failing tests",
+  recentLogs: "Logs",
+  exportOptions: "Export options",
+  includeLogs: "Include logs",
+  includeEnvMeta: "Include environment info",
+  openDebugPanel: "Open debug panel",
 };
 
 
