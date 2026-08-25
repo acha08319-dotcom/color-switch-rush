@@ -75,6 +75,15 @@ export type Dict = {
   language: string;
   languageDesc: string;
   languageAuto: string;
+  rerunCheck: string;
+  showDetails: string;
+  hideDetails: string;
+  failingTests: string;
+  recentLogs: string;
+  exportOptions: string;
+  includeLogs: string;
+  includeEnvMeta: string;
+  openDebugPanel: string;
 };
 
 
