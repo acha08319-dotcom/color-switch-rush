@@ -419,7 +419,12 @@ function Game() {
               localStorage.setItem("csr_daily_last", data.streakLast);
             }
             if (data.settings) {
-              setSettings((prev) => ({ ...prev, ...data.settings! }));
+              setSettings((prev) => {
+                const next = { ...prev, ...data.settings! };
+                // Keep the language override (and other prefs) sticky locally too.
+                try { localStorage.setItem("csr_settings", JSON.stringify(next)); } catch {}
+                return next;
+              });
             }
           } catch {}
           loadBests();
