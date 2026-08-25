@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { detectLanguage, getDict, formatDate, LANGS, LANG_NAMES, type Dict, type Lang } from "../lib/i18n";
-import { PlayablesDebugPanel, runSelfCheck, type SelfCheckResult } from "../components/PlayablesDebugPanel";
+import { PlayablesDebugPanel, runSelfCheck, type SelfCheckMeta, type SelfCheckResult } from "../components/PlayablesDebugPanel";
 
 
 
@@ -204,6 +204,7 @@ function Game() {
   const [showDebug, setShowDebug] = useState(false);
   const [selfCheck, setSelfCheck] = useState<SelfCheckResult | null>(null);
   const [selfCheckRunning, setSelfCheckRunning] = useState(true);
+  const [selfCheckExpanded, setSelfCheckExpanded] = useState(false);
   const lang: Lang = settings.langOverride === "auto" ? detectedLang : settings.langOverride;
   const t: Dict = getDict(lang);
 
@@ -286,13 +287,42 @@ function Game() {
     detectLanguage().then((l) => setDetectedLang(l)).catch(() => {});
   }, [loadBests]);
 
+  // Metadata attached to every self-check report.
+  const buildCheckMeta = useCallback((): SelfCheckMeta => {
+    let detectedLocale: string | null = null;
+    try { detectedLocale = typeof navigator !== "undefined" ? navigator.language : null; } catch {}
+    let timeZone: string | null = null;
+    try { timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? null; } catch {}
+    const key = todayKey();
+    return {
+      detectedLocale,
+      langOverride: settingsRef.current.langOverride,
+      effectiveLang: lang,
+      timeZone,
+      dailyDateKey: key,
+      dailyDateFormatted: formatDate(key, lang),
+    };
+  }, [lang]);
+
+  const runCheck = useCallback(async () => {
+    setSelfCheckRunning(true);
+    try {
+      const r = await runSelfCheck(undefined, buildCheckMeta());
+      setSelfCheck(r);
+      if (r.summary.fail > 0) {
+        try { window.ytgame?.health.logWarning(); } catch {}
+      }
+    } catch {}
+    setSelfCheckRunning(false);
+  }, [buildCheckMeta]);
+
   // Auto-run the Playables integration self-check once on load.
   useEffect(() => {
     let cancelled = false;
     setSelfCheckRunning(true);
     // Defer slightly so the SDK script has a chance to attach window.ytgame.
     const timer = window.setTimeout(() => {
-      runSelfCheck()
+      runSelfCheck(undefined, buildCheckMeta())
         .then((r) => {
           if (cancelled) return;
           setSelfCheck(r);
@@ -309,8 +339,8 @@ function Game() {
       cancelled = true;
       window.clearTimeout(timer);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
 
 
   // YouTube Playables SDK integration.
@@ -1162,7 +1192,7 @@ function Game() {
 
             {/* Auto self-check status */}
             <button
-              onClick={() => setShowDebug(true)}
+              onClick={() => setSelfCheckExpanded((v) => !v)}
               className={`mb-3 px-3 py-1 rounded-full border text-[10px] font-bold uppercase tracking-widest transition ${
                 selfCheckRunning || !selfCheck
                   ? "border-white/20 text-white/50 hover:bg-white/5"
@@ -1176,7 +1206,68 @@ function Game() {
                 : selfCheck.summary.fail > 0
                   ? `✕ ${t.selfCheckFail(selfCheck.summary.fail)}`
                   : `✓ ${t.selfCheckOk(selfCheck.summary.pass, selfCheck.summary.total)}`}
+              <span className="ml-1 opacity-60">{selfCheckExpanded ? "▲" : "▼"}</span>
             </button>
+
+            {selfCheckExpanded && (
+              <div className="mb-3 w-full max-w-sm rounded-xl border border-white/10 bg-black/50 p-3 text-left animate-fade-in">
+                <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">{t.failingTests}</div>
+                {selfCheck && selfCheck.tests.filter((x) => x.status === "fail" || x.status === "skip").length > 0 ? (
+                  <div className="space-y-1">
+                    {selfCheck.tests
+                      .filter((x) => x.status === "fail" || x.status === "skip")
+                      .map((x) => (
+                        <div key={x.name} className="text-[11px]">
+                          <span className={x.status === "fail" ? "text-rose-300 font-bold" : "text-amber-200 font-bold"}>
+                            {x.status === "fail" ? t.failed : t.skipped}
+                          </span>{" "}
+                          <span className="text-white/80">{x.name}</span>
+                          {x.message && <div className="text-white/50 font-mono break-words">{x.message}</div>}
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <div className="text-[11px] text-emerald-300">
+                    {selfCheckRunning ? t.selfCheckRunning : "—"}
+                  </div>
+                )}
+
+                {selfCheck && selfCheck.logs.length > 0 && (
+                  <>
+                    <div className="text-[10px] uppercase tracking-widest text-white/40 mt-3 mb-1">{t.recentLogs}</div>
+                    <div className="max-h-32 overflow-y-auto space-y-0.5">
+                      {selfCheck.logs
+                        .filter((l) => l.level !== "info")
+                        .slice(-12)
+                        .map((l, i) => (
+                          <div
+                            key={i}
+                            className={`text-[10px] font-mono break-words ${l.level === "error" ? "text-rose-300/90" : "text-amber-200/80"}`}
+                          >
+                            +{l.t}ms {l.msg}
+                          </div>
+                        ))}
+                    </div>
+                  </>
+                )}
+
+                <div className="mt-3 flex gap-2">
+                  <button
+                    onClick={() => { void runCheck(); }}
+                    disabled={selfCheckRunning}
+                    className="flex-1 px-3 py-1.5 rounded-full border border-white/20 text-white/80 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition disabled:opacity-40"
+                  >
+                    ↻ {selfCheckRunning ? t.running : t.rerunCheck}
+                  </button>
+                  <button
+                    onClick={() => setShowDebug(true)}
+                    className="flex-1 px-3 py-1.5 rounded-full border border-white/20 text-white/80 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition"
+                  >
+                    🔧 {t.openDebugPanel}
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="flex items-center gap-3">
               <button
@@ -1382,6 +1473,7 @@ function Game() {
           onClose={() => setShowDebug(false)}
           result={selfCheck}
           onResult={(r) => setSelfCheck(r)}
+          meta={buildCheckMeta()}
           labels={{
             title: t.debugPanel,
             run: t.runTests,
@@ -1393,6 +1485,10 @@ function Game() {
             copyReport: t.copyReport,
             copied: t.copied,
             downloadReport: t.downloadReport,
+            exportOptions: t.exportOptions,
+            includeLogs: t.includeLogs,
+            includeEnvMeta: t.includeEnvMeta,
+            rerun: t.rerunCheck,
           }}
         />
 
