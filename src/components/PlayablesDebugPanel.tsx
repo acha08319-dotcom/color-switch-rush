@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Status = "pending" | "pass" | "fail" | "skip";
 export type Test = { name: string; status: Status; message?: string };
