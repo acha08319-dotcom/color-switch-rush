@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type Status = "pending" | "pass" | "fail" | "skip";
 export type Test = { name: string; status: Status; message?: string };
@@ -13,6 +13,48 @@ export type SelfCheckMeta = {
 };
 
 export type ExportOptions = { includeLogs: boolean; includeEnvMeta: boolean };
+
+/** Build identifier so reports can be tied to a specific game version. */
+export const BUILD_ID = "csr-2026.09.10";
+
+export type HistoryEntry = {
+  at: string;
+  buildId: string;
+  pass: number;
+  fail: number;
+  skip: number;
+  total: number;
+  cancelled: boolean;
+};
+
+const HISTORY_KEY = "csr_selfcheck_history";
+export const HISTORY_LIMIT = 5;
+
+export function loadHistory(): HistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, HISTORY_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function pushHistory(r: SelfCheckResult): HistoryEntry[] {
+  const entry: HistoryEntry = {
+    at: r.finishedAt,
+    buildId: r.buildId,
+    pass: r.summary.pass,
+    fail: r.summary.fail,
+    skip: r.summary.skip,
+    total: r.summary.total,
+    cancelled: Boolean(r.cancelled),
+  };
+  const next = [entry, ...loadHistory()].slice(0, HISTORY_LIMIT);
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch {}
+  return next;
+}
 
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = { includeLogs: true, includeEnvMeta: true };
 
@@ -44,6 +86,8 @@ export type SelfCheckResult = {
   summary: { total: number; pass: number; fail: number; skip: number };
   tests: Test[];
   logs: LogEntry[];
+  buildId: string;
+  cancelled?: boolean;
 };
 
 const TEST_KEY = "__csr_selfcheck__";
@@ -78,12 +122,14 @@ export const INITIAL_TESTS: Test[] = [
 export async function runSelfCheck(
   onProgress?: (tests: Test[]) => void,
   meta: SelfCheckMeta = {},
+  signal?: AbortSignal,
 ): Promise<SelfCheckResult> {
   const started = Date.now();
   const startedAt = new Date(started).toISOString();
   const tests: Test[] = INITIAL_TESTS.map((t) => ({ ...t }));
   const logs: LogEntry[] = [];
   let detectedLanguage: string | null = null;
+  let cancelled = false;
 
   const log = (level: LogEntry["level"], msg: string) => {
     logs.push({ t: Date.now() - started, level, msg });
@@ -120,7 +166,20 @@ export async function runSelfCheck(
       },
       tests: tests.map((t) => ({ ...t })),
       logs,
+      buildId: BUILD_ID,
+      cancelled,
     };
+  };
+
+  // Yields to the event loop, then aborts the remaining tests if cancelled.
+  const stopped = async (): Promise<boolean> => {
+    await new Promise((r) => setTimeout(r, 0));
+    if (!signal?.aborted) return false;
+    cancelled = true;
+    for (const t of tests) {
+      if (t.status === "pending") update(t.name, "skip", "Cancelled");
+    }
+    return true;
   };
 
   // 1. SDK global present
@@ -141,6 +200,7 @@ export async function runSelfCheck(
   );
 
   // 3. firstFrameReady / gameReady callable
+  if (await stopped()) return finish();
   try {
     yt.game.firstFrameReady();
     yt.game.gameReady();
@@ -150,6 +210,7 @@ export async function runSelfCheck(
   }
 
   // 4. Audio enabled
+  if (await stopped()) return finish();
   try {
     const enabled = yt.system.isAudioEnabled();
     update("Audio state", "pass", enabled ? "Audio enabled" : "Audio disabled");
@@ -158,6 +219,7 @@ export async function runSelfCheck(
   }
 
   // 5. Language
+  if (await stopped()) return finish();
   try {
     const lang = await withTimeout(yt.system.getLanguage(), 3000, "getLanguage");
     detectedLanguage = lang;
@@ -167,6 +229,7 @@ export async function runSelfCheck(
   }
 
   // 6. pause/resume listener registration
+  if (await stopped()) return finish();
   try {
     const offPause = yt.system.onPause(() => {});
     const offResume = yt.system.onResume(() => {});
@@ -181,6 +244,7 @@ export async function runSelfCheck(
   }
 
   // 7. onAudioEnabledChange registers
+  if (await stopped()) return finish();
   try {
     const off = yt.system.onAudioEnabledChange(() => {});
     if (typeof off !== "function") throw new Error("No unsubscribe returned");
@@ -191,6 +255,7 @@ export async function runSelfCheck(
   }
 
   // 8. saveData / loadData round-trip (only real inside Playables env)
+  if (await stopped()) return finish();
   if (!yt.IN_PLAYABLES_ENV) {
     update("Cloud save round-trip", "skip", "Requires Playables host");
   } else {
@@ -216,6 +281,7 @@ export async function runSelfCheck(
   }
 
   // 9. sendScore API present
+  if (await stopped()) return finish();
   try {
     if (typeof yt.engagement?.sendScore !== "function") {
       throw new Error("engagement.sendScore is not a function");
@@ -226,6 +292,7 @@ export async function runSelfCheck(
   }
 
   // 10. Ads APIs available (do not actually request)
+  if (await stopped()) return finish();
   try {
     const hasInterstitial = typeof yt.ads?.requestInterstitialAd === "function";
     const hasRewarded = typeof yt.ads?.requestRewardedAd === "function";
@@ -236,6 +303,7 @@ export async function runSelfCheck(
   }
 
   // 11. Health logging
+  if (await stopped()) return finish();
   try {
     yt.health.logWarning();
     update("Health logging", "pass", "logWarning callable");
@@ -268,6 +336,11 @@ export type DebugLabels = {
   includeLogs: string;
   includeEnvMeta: string;
   rerun: string;
+  cancel?: string;
+  cancelled?: string;
+  history?: string;
+  noHistory?: string;
+  progress?: (done: number, total: number) => string;
 };
 
 export function PlayablesDebugPanel({
@@ -290,11 +363,19 @@ export function PlayablesDebugPanel({
   const [isRunning, setIsRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [exportOpts, setExportOpts] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Restore the last-used export options so they persist across sessions.
+  // Restore the last-used export options + run history so they persist across sessions.
   useEffect(() => {
     setExportOpts(loadExportOptions());
+    setHistory(loadHistory());
   }, []);
+
+  // Refresh history whenever the panel is opened (auto-runs may have added entries).
+  useEffect(() => {
+    if (open) setHistory(loadHistory());
+  }, [open]);
 
   const patchExportOpts = useCallback((patch: Partial<ExportOptions>) => {
     setExportOpts((prev) => {
@@ -313,18 +394,27 @@ export function PlayablesDebugPanel({
   }, [result, isRunning]);
 
   const run = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setTests(INITIAL_TESTS.map((t) => ({ ...t, status: "pending", message: undefined })));
     setIsRunning(true);
     setCopied(false);
     try {
-      const r = await runSelfCheck(setTests, meta);
+      const r = await runSelfCheck(setTests, meta, controller.signal);
       setReport(r);
       setTests(r.tests);
+      setHistory(pushHistory(r));
       onResult?.(r);
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setIsRunning(false);
     }
   }, [onResult, meta]);
+
+  const cancelRun = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const reportJson = useCallback(() => {
     if (!report) return "null";
@@ -396,6 +486,25 @@ export function PlayablesDebugPanel({
         </button>
       </div>
 
+      {isRunning && (
+        <div className="px-4 pb-2">
+          <div className="text-[11px] text-white/70 font-bold mb-1">
+            {(labels.progress ?? ((d: number, tot: number) => `Running ${d}/${tot}…`))(
+              tests.filter((t) => t.status !== "pending").length,
+              tests.length,
+            )}
+          </div>
+          <div className="h-1 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full bg-white/70 transition-all duration-200"
+              style={{
+                width: `${(tests.filter((t) => t.status !== "pending").length / tests.length) * 100}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="px-4 pb-2 flex items-center gap-2 text-[10px] uppercase tracking-widest">
         <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
           {passCount} {labels.pass}
@@ -457,6 +566,41 @@ export function PlayablesDebugPanel({
         </div>
       </div>
 
+      <div className="px-4 pb-2">
+        <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
+          {labels.history ?? "Last runs"}
+        </div>
+        {history.length === 0 ? (
+          <div className="text-[11px] text-white/40">{labels.noHistory ?? "No runs yet"}</div>
+        ) : (
+          <div className="space-y-1">
+            {history.map((h, i) => (
+              <div
+                key={`${h.at}-${i}`}
+                className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px]"
+              >
+                <span className="text-white/60 font-mono">
+                  {new Date(h.at).toLocaleString()}
+                </span>
+                <span className="text-white/30 font-mono truncate">{h.buildId}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${
+                    h.cancelled
+                      ? "bg-white/10 text-white/60"
+                      : h.fail > 0
+                        ? "bg-rose-500/25 text-rose-200"
+                        : "bg-emerald-500/20 text-emerald-300"
+                  }`}
+                >
+                  {h.cancelled ? (labels.cancelled ?? "Cancelled") : `${h.pass}/${h.total}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+
       <div className="px-4 pb-2 flex gap-2">
         <button
           onClick={copyReport}
@@ -475,13 +619,21 @@ export function PlayablesDebugPanel({
       </div>
 
       <div className="p-4 pt-2 flex gap-2 border-t border-white/10">
-        <button
-          onClick={run}
-          disabled={isRunning}
-          className="flex-1 px-4 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest disabled:opacity-50 hover:scale-[1.02] transition-transform"
-        >
-          {isRunning ? labels.running : done ? `↻ ${labels.rerun}` : labels.run}
-        </button>
+        {isRunning ? (
+          <button
+            onClick={cancelRun}
+            className="flex-1 px-4 py-3 rounded-full border border-rose-400/50 bg-rose-500/20 text-rose-100 font-black text-sm uppercase tracking-widest hover:bg-rose-500/30 transition"
+          >
+            ✕ {labels.cancel ?? "Cancel"}
+          </button>
+        ) : (
+          <button
+            onClick={run}
+            className="flex-1 px-4 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-[1.02] transition-transform"
+          >
+            {done ? `↻ ${labels.rerun}` : labels.run}
+          </button>
+        )}
         <button
           onClick={onClose}
           className="px-4 py-3 rounded-full border border-white/20 text-white/70 font-bold text-sm uppercase tracking-widest hover:bg-white/10 transition"
