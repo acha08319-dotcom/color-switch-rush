@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useRef, useState, useCallback } from "react";
 import { detectLanguage, getDict, formatDate, LANGS, LANG_NAMES, type Dict, type Lang } from "../lib/i18n";
-import { PlayablesDebugPanel, runSelfCheck, type SelfCheckMeta, type SelfCheckResult } from "../components/PlayablesDebugPanel";
+import { PlayablesDebugPanel, runSelfCheck, pushHistory, INITIAL_TESTS, type SelfCheckMeta, type SelfCheckResult } from "../components/PlayablesDebugPanel";
 
 
 
@@ -205,6 +205,8 @@ function Game() {
   const [selfCheck, setSelfCheck] = useState<SelfCheckResult | null>(null);
   const [selfCheckRunning, setSelfCheckRunning] = useState(true);
   const [selfCheckExpanded, setSelfCheckExpanded] = useState(false);
+  const [checkProgress, setCheckProgress] = useState(0);
+  const checkAbortRef = useRef<AbortController | null>(null);
   const lang: Lang = settings.langOverride === "auto" ? detectedLang : settings.langOverride;
   const t: Dict = getDict(lang);
 
@@ -305,38 +307,61 @@ function Game() {
   }, [lang]);
 
   const runCheck = useCallback(async () => {
+    checkAbortRef.current?.abort();
+    const controller = new AbortController();
+    checkAbortRef.current = controller;
+    setCheckProgress(0);
     setSelfCheckRunning(true);
     try {
-      const r = await runSelfCheck(undefined, buildCheckMeta());
+      const r = await runSelfCheck(
+        (ts) => setCheckProgress(ts.filter((x) => x.status !== "pending").length),
+        buildCheckMeta(),
+        controller.signal,
+      );
       setSelfCheck(r);
+      pushHistory(r);
       if (r.summary.fail > 0) {
         try { window.ytgame?.health.logWarning(); } catch {}
       }
     } catch {}
+    if (checkAbortRef.current === controller) checkAbortRef.current = null;
     setSelfCheckRunning(false);
   }, [buildCheckMeta]);
 
+  const cancelCheck = useCallback(() => {
+    checkAbortRef.current?.abort();
+  }, []);
+
   // Auto-run the Playables integration self-check once on load.
   useEffect(() => {
-    let cancelled = false;
+    let disposed = false;
+    const controller = new AbortController();
+    checkAbortRef.current = controller;
     setSelfCheckRunning(true);
+    setCheckProgress(0);
     // Defer slightly so the SDK script has a chance to attach window.ytgame.
     const timer = window.setTimeout(() => {
-      runSelfCheck(undefined, buildCheckMeta())
+      runSelfCheck(
+        (ts) => setCheckProgress(ts.filter((x) => x.status !== "pending").length),
+        buildCheckMeta(),
+        controller.signal,
+      )
         .then((r) => {
-          if (cancelled) return;
+          if (disposed) return;
           setSelfCheck(r);
+          pushHistory(r);
           if (r.summary.fail > 0) {
             try { window.ytgame?.health.logWarning(); } catch {}
           }
         })
         .catch(() => {})
         .finally(() => {
-          if (!cancelled) setSelfCheckRunning(false);
+          if (checkAbortRef.current === controller) checkAbortRef.current = null;
+          if (!disposed) setSelfCheckRunning(false);
         });
     }, 600);
     return () => {
-      cancelled = true;
+      disposed = true;
       window.clearTimeout(timer);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
