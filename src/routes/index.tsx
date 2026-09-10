@@ -1231,7 +1231,9 @@ function Game() {
                     : "border-emerald-400/40 bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25"
               }`}
             >
-              {selfCheckRunning || !selfCheck
+              {selfCheckRunning
+                ? `⏳ ${t.selfCheckRunning} ${checkProgress}/${INITIAL_TESTS.length}`
+                : !selfCheck
                 ? `⏳ ${t.selfCheckRunning}`
                 : selfCheck.summary.fail > 0
                   ? `✕ ${t.selfCheckFail(selfCheck.summary.fail)}`
@@ -1282,13 +1284,21 @@ function Game() {
                 )}
 
                 <div className="mt-3 flex gap-2">
-                  <button
-                    onClick={() => { void runCheck(); }}
-                    disabled={selfCheckRunning}
-                    className="flex-1 px-3 py-1.5 rounded-full border border-white/20 text-white/80 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition disabled:opacity-40"
-                  >
-                    ↻ {selfCheckRunning ? t.running : t.rerunCheck}
-                  </button>
+                  {selfCheckRunning ? (
+                    <button
+                      onClick={cancelCheck}
+                      className="flex-1 px-3 py-1.5 rounded-full border border-rose-400/50 bg-rose-500/20 text-rose-100 text-[10px] font-bold uppercase tracking-widest hover:bg-rose-500/30 transition"
+                    >
+                      ✕ Cancel
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { void runCheck(); }}
+                      className="flex-1 px-3 py-1.5 rounded-full border border-white/20 text-white/80 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition"
+                    >
+                      ↻ {t.rerunCheck}
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowDebug(true)}
                     className="flex-1 px-3 py-1.5 rounded-full border border-white/20 text-white/80 text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition"
