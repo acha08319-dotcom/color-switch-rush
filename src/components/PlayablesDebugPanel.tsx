@@ -486,6 +486,25 @@ export function PlayablesDebugPanel({
         </button>
       </div>
 
+      {isRunning && (
+        <div className="px-4 pb-2">
+          <div className="text-[11px] text-white/70 font-bold mb-1">
+            {(labels.progress ?? ((d: number, tot: number) => `Running ${d}/${tot}…`))(
+              tests.filter((t) => t.status !== "pending").length,
+              tests.length,
+            )}
+          </div>
+          <div className="h-1 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full bg-white/70 transition-all duration-200"
+              style={{
+                width: `${(tests.filter((t) => t.status !== "pending").length / tests.length) * 100}%`,
+              }}
+            />
+          </div>
+        </div>
+      )}
+
       <div className="px-4 pb-2 flex items-center gap-2 text-[10px] uppercase tracking-widest">
         <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">
           {passCount} {labels.pass}
@@ -547,6 +566,41 @@ export function PlayablesDebugPanel({
         </div>
       </div>
 
+      <div className="px-4 pb-2">
+        <div className="text-[10px] uppercase tracking-widest text-white/40 mb-1">
+          {labels.history ?? "Last runs"}
+        </div>
+        {history.length === 0 ? (
+          <div className="text-[11px] text-white/40">{labels.noHistory ?? "No runs yet"}</div>
+        ) : (
+          <div className="space-y-1">
+            {history.map((h, i) => (
+              <div
+                key={`${h.at}-${i}`}
+                className="flex items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-[10px]"
+              >
+                <span className="text-white/60 font-mono">
+                  {new Date(h.at).toLocaleString()}
+                </span>
+                <span className="text-white/30 font-mono truncate">{h.buildId}</span>
+                <span
+                  className={`px-1.5 py-0.5 rounded font-black uppercase tracking-wider ${
+                    h.cancelled
+                      ? "bg-white/10 text-white/60"
+                      : h.fail > 0
+                        ? "bg-rose-500/25 text-rose-200"
+                        : "bg-emerald-500/20 text-emerald-300"
+                  }`}
+                >
+                  {h.cancelled ? (labels.cancelled ?? "Cancelled") : `${h.pass}/${h.total}`}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+
       <div className="px-4 pb-2 flex gap-2">
         <button
           onClick={copyReport}
@@ -565,13 +619,21 @@ export function PlayablesDebugPanel({
       </div>
 
       <div className="p-4 pt-2 flex gap-2 border-t border-white/10">
-        <button
-          onClick={run}
-          disabled={isRunning}
-          className="flex-1 px-4 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest disabled:opacity-50 hover:scale-[1.02] transition-transform"
-        >
-          {isRunning ? labels.running : done ? `↻ ${labels.rerun}` : labels.run}
-        </button>
+        {isRunning ? (
+          <button
+            onClick={cancelRun}
+            className="flex-1 px-4 py-3 rounded-full border border-rose-400/50 bg-rose-500/20 text-rose-100 font-black text-sm uppercase tracking-widest hover:bg-rose-500/30 transition"
+          >
+            ✕ {labels.cancel ?? "Cancel"}
+          </button>
+        ) : (
+          <button
+            onClick={run}
+            className="flex-1 px-4 py-3 rounded-full bg-white text-black font-black text-sm uppercase tracking-widest hover:scale-[1.02] transition-transform"
+          >
+            {done ? `↻ ${labels.rerun}` : labels.run}
+          </button>
+        )}
         <button
           onClick={onClose}
           className="px-4 py-3 rounded-full border border-white/20 text-white/70 font-bold text-sm uppercase tracking-widest hover:bg-white/10 transition"
