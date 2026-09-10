@@ -185,6 +185,7 @@ export async function runSelfCheck(
   );
 
   // 3. firstFrameReady / gameReady callable
+  if (await stopped()) return finish();
   try {
     yt.game.firstFrameReady();
     yt.game.gameReady();
