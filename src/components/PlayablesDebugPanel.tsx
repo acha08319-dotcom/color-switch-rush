@@ -336,6 +336,11 @@ export type DebugLabels = {
   includeLogs: string;
   includeEnvMeta: string;
   rerun: string;
+  cancel?: string;
+  cancelled?: string;
+  history?: string;
+  noHistory?: string;
+  progress?: (done: number, total: number) => string;
 };
 
 export function PlayablesDebugPanel({
@@ -358,11 +363,19 @@ export function PlayablesDebugPanel({
   const [isRunning, setIsRunning] = useState(false);
   const [copied, setCopied] = useState(false);
   const [exportOpts, setExportOpts] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
+  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const abortRef = useRef<AbortController | null>(null);
 
-  // Restore the last-used export options so they persist across sessions.
+  // Restore the last-used export options + run history so they persist across sessions.
   useEffect(() => {
     setExportOpts(loadExportOptions());
+    setHistory(loadHistory());
   }, []);
+
+  // Refresh history whenever the panel is opened (auto-runs may have added entries).
+  useEffect(() => {
+    if (open) setHistory(loadHistory());
+  }, [open]);
 
   const patchExportOpts = useCallback((patch: Partial<ExportOptions>) => {
     setExportOpts((prev) => {
@@ -381,18 +394,27 @@ export function PlayablesDebugPanel({
   }, [result, isRunning]);
 
   const run = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setTests(INITIAL_TESTS.map((t) => ({ ...t, status: "pending", message: undefined })));
     setIsRunning(true);
     setCopied(false);
     try {
-      const r = await runSelfCheck(setTests, meta);
+      const r = await runSelfCheck(setTests, meta, controller.signal);
       setReport(r);
       setTests(r.tests);
+      setHistory(pushHistory(r));
       onResult?.(r);
     } finally {
+      if (abortRef.current === controller) abortRef.current = null;
       setIsRunning(false);
     }
   }, [onResult, meta]);
+
+  const cancelRun = useCallback(() => {
+    abortRef.current?.abort();
+  }, []);
 
   const reportJson = useCallback(() => {
     if (!report) return "null";
