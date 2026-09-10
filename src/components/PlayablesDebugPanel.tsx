@@ -14,6 +14,48 @@ export type SelfCheckMeta = {
 
 export type ExportOptions = { includeLogs: boolean; includeEnvMeta: boolean };
 
+/** Build identifier so reports can be tied to a specific game version. */
+export const BUILD_ID = "csr-2026.09.10";
+
+export type HistoryEntry = {
+  at: string;
+  buildId: string;
+  pass: number;
+  fail: number;
+  skip: number;
+  total: number;
+  cancelled: boolean;
+};
+
+const HISTORY_KEY = "csr_selfcheck_history";
+export const HISTORY_LIMIT = 5;
+
+export function loadHistory(): HistoryEntry[] {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.slice(0, HISTORY_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function pushHistory(r: SelfCheckResult): HistoryEntry[] {
+  const entry: HistoryEntry = {
+    at: r.finishedAt,
+    buildId: r.buildId,
+    pass: r.summary.pass,
+    fail: r.summary.fail,
+    skip: r.summary.skip,
+    total: r.summary.total,
+    cancelled: Boolean(r.cancelled),
+  };
+  const next = [entry, ...loadHistory()].slice(0, HISTORY_LIMIT);
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(next)); } catch {}
+  return next;
+}
+
 export const DEFAULT_EXPORT_OPTIONS: ExportOptions = { includeLogs: true, includeEnvMeta: true };
 
 const EXPORT_KEY = "csr_export_opts";
