@@ -122,12 +122,14 @@ export const INITIAL_TESTS: Test[] = [
 export async function runSelfCheck(
   onProgress?: (tests: Test[]) => void,
   meta: SelfCheckMeta = {},
+  signal?: AbortSignal,
 ): Promise<SelfCheckResult> {
   const started = Date.now();
   const startedAt = new Date(started).toISOString();
   const tests: Test[] = INITIAL_TESTS.map((t) => ({ ...t }));
   const logs: LogEntry[] = [];
   let detectedLanguage: string | null = null;
+  let cancelled = false;
 
   const log = (level: LogEntry["level"], msg: string) => {
     logs.push({ t: Date.now() - started, level, msg });
@@ -164,7 +166,20 @@ export async function runSelfCheck(
       },
       tests: tests.map((t) => ({ ...t })),
       logs,
+      buildId: BUILD_ID,
+      cancelled,
     };
+  };
+
+  // Yields to the event loop, then aborts the remaining tests if cancelled.
+  const stopped = async (): Promise<boolean> => {
+    await new Promise((r) => setTimeout(r, 0));
+    if (!signal?.aborted) return false;
+    cancelled = true;
+    for (const t of tests) {
+      if (t.status === "pending") update(t.name, "skip", "Cancelled");
+    }
+    return true;
   };
 
   // 1. SDK global present
@@ -195,6 +210,7 @@ export async function runSelfCheck(
   }
 
   // 4. Audio enabled
+  if (await stopped()) return finish();
   try {
     const enabled = yt.system.isAudioEnabled();
     update("Audio state", "pass", enabled ? "Audio enabled" : "Audio disabled");
@@ -203,6 +219,7 @@ export async function runSelfCheck(
   }
 
   // 5. Language
+  if (await stopped()) return finish();
   try {
     const lang = await withTimeout(yt.system.getLanguage(), 3000, "getLanguage");
     detectedLanguage = lang;
@@ -212,6 +229,7 @@ export async function runSelfCheck(
   }
 
   // 6. pause/resume listener registration
+  if (await stopped()) return finish();
   try {
     const offPause = yt.system.onPause(() => {});
     const offResume = yt.system.onResume(() => {});
@@ -226,6 +244,7 @@ export async function runSelfCheck(
   }
 
   // 7. onAudioEnabledChange registers
+  if (await stopped()) return finish();
   try {
     const off = yt.system.onAudioEnabledChange(() => {});
     if (typeof off !== "function") throw new Error("No unsubscribe returned");
@@ -236,6 +255,7 @@ export async function runSelfCheck(
   }
 
   // 8. saveData / loadData round-trip (only real inside Playables env)
+  if (await stopped()) return finish();
   if (!yt.IN_PLAYABLES_ENV) {
     update("Cloud save round-trip", "skip", "Requires Playables host");
   } else {
@@ -261,6 +281,7 @@ export async function runSelfCheck(
   }
 
   // 9. sendScore API present
+  if (await stopped()) return finish();
   try {
     if (typeof yt.engagement?.sendScore !== "function") {
       throw new Error("engagement.sendScore is not a function");
@@ -271,6 +292,7 @@ export async function runSelfCheck(
   }
 
   // 10. Ads APIs available (do not actually request)
+  if (await stopped()) return finish();
   try {
     const hasInterstitial = typeof yt.ads?.requestInterstitialAd === "function";
     const hasRewarded = typeof yt.ads?.requestRewardedAd === "function";
@@ -281,6 +303,7 @@ export async function runSelfCheck(
   }
 
   // 11. Health logging
+  if (await stopped()) return finish();
   try {
     yt.health.logWarning();
     update("Health logging", "pass", "logWarning callable");
