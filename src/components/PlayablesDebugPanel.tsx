@@ -86,6 +86,8 @@ export type SelfCheckResult = {
   summary: { total: number; pass: number; fail: number; skip: number };
   tests: Test[];
   logs: LogEntry[];
+  buildId: string;
+  cancelled?: boolean;
 };
 
 const TEST_KEY = "__csr_selfcheck__";
