@@ -14,7 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      selfcheck_reports: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          report: Json
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          report: Json
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          report?: Json
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
