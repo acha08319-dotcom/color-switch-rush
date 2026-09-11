@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 export type Status = "pending" | "pass" | "fail" | "skip";
 export type Test = { name: string; status: Status; message?: string };
@@ -364,6 +365,10 @@ export function PlayablesDebugPanel({
   const [copied, setCopied] = useState(false);
   const [exportOpts, setExportOpts] = useState<ExportOptions>(DEFAULT_EXPORT_OPTIONS);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [sharing, setSharing] = useState(false);
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Restore the last-used export options + run history so they persist across sessions.
@@ -459,6 +464,33 @@ export function PlayablesDebugPanel({
     a.click();
     URL.revokeObjectURL(url);
   }, [report, reportJson]);
+
+  // Uploads the report and returns a link that can be opened later for debugging.
+  const shareReport = useCallback(async () => {
+    if (!report) return;
+    setSharing(true);
+    setShareError(null);
+    setShareCopied(false);
+    try {
+      const { data, error } = await supabase
+        .from("selfcheck_reports")
+        .insert({ report: JSON.parse(reportJson()) })
+        .select("id")
+        .single();
+      if (error || !data) throw new Error(error?.message ?? "Upload failed");
+      const url = `${window.location.origin}/report/${data.id}`;
+      setShareLink(url);
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareCopied(true);
+      } catch {}
+    } catch (e: any) {
+      setShareError(e?.message ?? String(e));
+    } finally {
+      setSharing(false);
+    }
+  }, [report, reportJson]);
+
 
   if (!open) return null;
 
@@ -617,6 +649,23 @@ export function PlayablesDebugPanel({
           ⤓ {labels.downloadReport}
         </button>
       </div>
+
+      <div className="px-4 pb-2">
+        <button
+          onClick={shareReport}
+          disabled={!report || isRunning || sharing}
+          className="w-full px-3 py-2 rounded-full border border-cyan-300/40 bg-cyan-400/10 text-cyan-100 font-bold text-[11px] uppercase tracking-widest hover:bg-cyan-400/20 transition disabled:opacity-40"
+        >
+          {sharing ? "…" : "🔗 Shareable link"}
+        </button>
+        {shareLink && (
+          <div className="mt-1.5 text-[10px] font-mono break-all text-cyan-200/80">
+            {shareLink} <span className="text-white/40">({shareCopied ? "copied" : "valid 7 days"})</span>
+          </div>
+        )}
+        {shareError && <div className="mt-1.5 text-[10px] text-rose-300">{shareError}</div>}
+      </div>
+
 
       <div className="p-4 pt-2 flex gap-2 border-t border-white/10">
         {isRunning ? (
